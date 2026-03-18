@@ -1,0 +1,22 @@
+{# services/dashboard/templates/partials/events.html
+   HTMX partial — returned by GET /events
+   Renders just the event rows for live-refresh without a full page reload.
+#}
+{% if events %}
+{% for e in events %}
+<div class="event-row">
+  <span class="event-ts">{{ e.timestamp[:19].replace('T',' ') }}</span>
+  <span class="event-src {% if e.source == 'sim-endpoint' %}src-sim{% else %}src-auth{% endif %}">
+    {{ e.source }}
+  </span>
+  <span class="event-type">{{ e.event_type }}</span>
+  <span><span class="sev sev-{{ e.severity }}">{{ e.severity }}</span></span>
+  <span class="event-sum">{{ e.summary }}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📡</div>
+  No events yet — run a scenario to see live data.
+</div>
+{% endif %}

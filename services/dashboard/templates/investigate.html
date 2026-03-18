@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — Investigate Alert</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --bg2:#0f1318; --bg3:#151a22; --border:#1e2733;
+    --accent:#00d4aa; --accent2:#0099ff; --red:#ff4455; --orange:#ff8800;
+    --yellow:#ffcc00; --muted:#4a5568; --text:#c8d6e5; --text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13px; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  }
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:0 24px; height:52px; display:flex; align-items:center; gap:16px;
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-family:var(--mono); font-size:15px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; }
+  .logo span { color:var(--text2); }
+  .back { color:var(--accent2); text-decoration:none; font-size:12px; margin-left:auto; }
+  .back:hover { color:var(--accent); }
+
+  .content { padding:24px; display:flex; flex-direction:column; gap:20px; max-width:1200px; margin:0 auto; }
+
+  /* ── Alert header bar ── */
+  .alert-header {
+    background:var(--bg2); border:1px solid var(--border); border-radius:4px;
+    padding:20px 24px; display:flex; align-items:flex-start; gap:20px;
+    flex-wrap:wrap;
+  }
+  .alert-sev-block {
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:12px 16px; border-radius:4px; min-width:80px;
+  }
+  .alert-sev-block.high   { background:rgba(255,68,85,.1);  border:1px solid rgba(255,68,85,.3); }
+  .alert-sev-block.medium { background:rgba(255,136,0,.1);  border:1px solid rgba(255,136,0,.3); }
+  .alert-sev-block.low    { background:rgba(255,204,0,.1);  border:1px solid rgba(255,204,0,.3); }
+  .alert-sev-block.info   { background:rgba(74,85,104,.15); border:1px solid rgba(74,85,104,.4); }
+  .sev-label { font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--text2); }
+  .sev-value { font-family:var(--mono); font-size:22px; }
+  .high   .sev-value { color:var(--red);    }
+  .medium .sev-value { color:var(--orange); }
+  .low    .sev-value { color:var(--yellow); }
+  .info   .sev-value { color:var(--text2);  }
+
+  .alert-info { flex:1; min-width:220px; }
+  .alert-rule { font-size:18px; font-weight:600; color:var(--text); margin-bottom:6px; }
+  .alert-summary { color:var(--text2); margin-bottom:12px; }
+  .alert-meta { display:flex; flex-wrap:wrap; gap:16px; }
+  .meta-kv { display:flex; flex-direction:column; gap:2px; }
+  .meta-k { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .meta-v { font-family:var(--mono); font-size:12px; color:var(--text); }
+
+  /* ── Shared form controls ── */
+  select, textarea, input[type="text"] {
+    background:var(--bg3); border:1px solid var(--border); color:var(--text);
+    padding:6px 10px; border-radius:3px; font-family:var(--sans); font-size:12px; outline:none;
+  }
+  select:focus, textarea:focus, input[type="text"]:focus { border-color:var(--accent2); }
+  textarea { resize:vertical; min-height:60px; width:100%; }
+
+  .btn {
+    border:none; padding:6px 14px; border-radius:3px; cursor:pointer;
+    font-size:12px; font-family:var(--sans); transition:background .15s;
+  }
+  .btn-primary  { background:var(--accent2); color:#fff; }
+  .btn-primary:hover { background:var(--accent); }
+  .btn-danger   { background:rgba(255,68,85,.15); color:var(--red); border:1px solid rgba(255,68,85,.3); }
+  .btn-danger:hover { background:rgba(255,68,85,.3); }
+  .btn-ghost    { background:transparent; color:var(--text2); border:1px solid var(--border); }
+  .btn-ghost:hover { border-color:var(--accent2); color:var(--accent2); }
+  .btn-warn     { background:rgba(255,136,0,.12); color:var(--orange); border:1px solid rgba(255,136,0,.3); }
+  .btn-warn:hover { background:rgba(255,136,0,.25); }
+
+  /* ── Panel ── */
+  .two-col  { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .three-col{ display:grid; grid-template-columns:2fr 1fr; gap:20px; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .panel-header {
+    padding:10px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--bg3);
+  }
+  .panel-title { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--text2); font-weight:500; }
+
+  .kv-list { padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+  .kv { display:flex; gap:8px; align-items:flex-start; }
+  .kv-k { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); min-width:120px; flex-shrink:0; padding-top:1px; }
+  .kv-v { font-family:var(--mono); font-size:11px; color:var(--text); word-break:break-all; }
+
+  .raw-block {
+    margin:12px 16px; background:var(--bg3); border:1px solid var(--border); border-radius:3px;
+    padding:12px; font-family:var(--mono); font-size:11px; color:var(--text2);
+    white-space:pre-wrap; word-break:break-all; max-height:200px; overflow-y:auto;
+  }
+  .match-tag {
+    display:inline-block; padding:2px 8px; margin:2px;
+    background:rgba(0,212,170,.1); border:1px solid rgba(0,212,170,.3);
+    border-radius:2px; font-family:var(--mono); font-size:10px; color:var(--accent);
+  }
+
+  table { width:100%; border-collapse:collapse; }
+  th { padding:7px 12px; text-align:left; font-size:9px; text-transform:uppercase;
+       letter-spacing:1.5px; color:var(--muted); border-bottom:1px solid var(--border); background:var(--bg3); }
+  td { padding:7px 12px; border-bottom:1px solid rgba(30,39,51,.6); font-size:11px; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(255,255,255,.02); }
+
+  .sev { display:inline-block; padding:1px 6px; border-radius:2px; font-size:9px;
+         font-weight:600; text-transform:uppercase; letter-spacing:1px; font-family:var(--mono); }
+  .sev-high   { background:rgba(255,68,85,.15); color:var(--red);    border:1px solid rgba(255,68,85,.3); }
+  .sev-medium { background:rgba(255,136,0,.12); color:var(--orange); border:1px solid rgba(255,136,0,.3); }
+  .sev-low    { background:rgba(255,204,0,.1);  color:var(--yellow); border:1px solid rgba(255,204,0,.3); }
+  .sev-info   { background:rgba(74,85,104,.2);  color:var(--text2);  border:1px solid rgba(74,85,104,.4); }
+  .mono-sm { font-family:var(--mono); font-size:11px; color:var(--text2); }
+
+  /* ── Triage sidebar ── */
+  .triage-col { display:flex; flex-direction:column; gap:12px; min-width:220px; }
+  .triage-section { display:flex; flex-direction:column; gap:6px; }
+  .triage-label { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--text2); }
+
+  /* ── Snooze pill ── */
+  .snooze-pill {
+    display:inline-flex; align-items:center; gap:6px;
+    background:rgba(255,136,0,.1); border:1px solid rgba(255,136,0,.3);
+    color:var(--orange); font-family:var(--mono); font-size:10px;
+    padding:4px 10px; border-radius:12px;
+  }
+
+  /* ── Suppression badges ── */
+  .supp-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    background:rgba(255,68,85,.08); border:1px solid rgba(255,68,85,.25);
+    color:var(--red); font-family:var(--mono); font-size:10px;
+    padding:3px 8px; border-radius:3px; margin:2px;
+  }
+
+  /* ── Notes history ── */
+  .note-entry {
+    padding:10px 16px; border-bottom:1px solid rgba(30,39,51,.5);
+  }
+  .note-entry:last-child { border-bottom:none; }
+  .note-ts { font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:4px; }
+  .note-text { font-size:12px; color:var(--text); line-height:1.5; }
+
+  /* ── Suppress form ── */
+  .suppress-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:12px 16px; }
+  .suppress-grid select { font-size:11px; }
+  .suppress-full { grid-column:1/-1; }
+
+  .fade-msg { font-size:11px; color:var(--accent); display:none; margin-top:4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</header>
+
+<div class="content">
+
+  <!-- ── Alert header ── -->
+  <div class="alert-header">
+    <div class="alert-sev-block {{ alert.severity }}">
+      <span class="sev-label">Severity</span>
+      <span class="sev-value">{{ alert.severity[0].upper() }}</span>
+    </div>
+
+    <div class="alert-info">
+      <div class="alert-rule">
+        {{ alert.rule_name }}
+        {% if is_snoozed %}
+        <span class="snooze-pill" style="font-size:11px; margin-left:8px;">
+          💤 snoozed until {{ alert.snoozed_until[:16].replace('T',' ') }} UTC
+        </span>
+        {% endif %}
+      </div>
+      <div class="alert-summary">{{ alert.summary }}</div>
+      <div class="alert-meta">
+        <div class="meta-kv"><span class="meta-k">Alert ID</span><span class="meta-v">{{ alert.alert_id[:16] }}…</span></div>
+        <div class="meta-kv"><span class="meta-k">Created</span><span class="meta-v">{{ alert.created_at[:19].replace('T',' ') }} UTC</span></div>
+        <div class="meta-kv"><span class="meta-k">Host</span><span class="meta-v">{{ alert.host }}</span></div>
+        {% if alert.user %}<div class="meta-kv"><span class="meta-k">User</span><span class="meta-v">{{ alert.user }}</span></div>{% endif %}
+        <div class="meta-kv"><span class="meta-k">Rule ID</span><span class="meta-v">{{ alert.rule_id }}</span></div>
+        {% if alert.hit_count and alert.hit_count > 1 %}
+        <div class="meta-kv">
+          <span class="meta-k">Hit Count</span>
+          <span class="meta-v" style="color:var(--orange);">×{{ alert.hit_count }}
+            <span style="color:var(--text2); font-size:10px; font-family:var(--sans);">
+              (last: {{ alert.last_hit_at[:19].replace('T',' ') if alert.last_hit_at else '?' }} UTC)
+            </span>
+          </span>
+        </div>
+        {% endif %}
+        {% if event %}
+          {% set cc   = event.fields.get('src_ip_country')      if event.fields is mapping else none %}
+          {% set name = event.fields.get('src_ip_country_name') if event.fields is mapping else none %}
+          {% set asn  = event.fields.get('src_ip_asn')          if event.fields is mapping else none %}
+          {% set internal = event.fields.get('src_ip_internal') if event.fields is mapping else none %}
+          {% if cc %}
+          <div class="meta-kv">
+            <span class="meta-k">Origin</span>
+            <span class="meta-v" style="{% if not internal %}color:var(--red);{% endif %}">
+              {{ name }} ({{ cc }})
+              {% if internal %}<span style="color:var(--accent); font-size:10px;">● internal</span>
+              {% else %}<span style="color:var(--red); font-size:10px;">● external</span>{% endif %}
+            </span>
+          </div>
+          {% endif %}
+          {% if asn and asn != 'unknown' and asn != 'internal' %}
+          <div class="meta-kv">
+            <span class="meta-k">ASN</span>
+            <span class="meta-v" style="font-size:11px;">{{ asn }}</span>
+          </div>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if active_suppressions %}
+      <div style="margin-top:10px;">
+        {% for s in active_suppressions %}
+        <span class="supp-badge">🔇 {{ s.scope }}{% if s.match_value %}: {{ s.match_value }}{% endif %}{% if s.expires_at %} (until {{ s.expires_at[:10] }}){% endif %}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Triage sidebar -->
+    <div class="triage-col">
+
+      <!-- Status -->
+      <div class="triage-section">
+        <div class="triage-label">Status</div>
+        <select id="status-select">
+          <option value="open"          {% if alert.status=='open' %}selected{% endif %}>Open</option>
+          <option value="investigating" {% if alert.status=='investigating' %}selected{% endif %}>Investigating</option>
+          <option value="closed"        {% if alert.status=='closed' %}selected{% endif %}>Closed</option>
+        </select>
+        <textarea id="notes-area" placeholder="Quick note (saved with status)…">{{ alert.notes or '' }}</textarea>
+        <button class="btn btn-primary" onclick="saveStatus()">Save Status</button>
+        <div class="fade-msg" id="status-msg">✓ Saved</div>
+      </div>
+
+      <!-- Snooze -->
+      <div class="triage-section">
+        <div class="triage-label">Snooze</div>
+        {% if is_snoozed %}
+        <div class="snooze-pill" style="margin-bottom:4px;">
+          💤 until {{ alert.snoozed_until[:16].replace('T',' ') }}
+        </div>
+        <button class="btn btn-warn" onclick="unsnooze()">Unsnooze</button>
+        {% else %}
+        <div style="display:flex; gap:6px;">
+          <select id="snooze-dur" style="flex:1;">
+            <option value="15">15 min</option>
+            <option value="60">1 hour</option>
+            <option value="240">4 hours</option>
+            <option value="1440">24 hours</option>
+          </select>
+          <button class="btn btn-ghost" onclick="snooze()">💤 Snooze</button>
+        </div>
+        {% endif %}
+        <div class="fade-msg" id="snooze-msg">✓ Snoozed</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Main two-column body ── -->
+  <div class="three-col">
+
+    <!-- Left: event details + raw + rule hits -->
+    <div style="display:flex; flex-direction:column; gap:20px;">
+
+      <div class="two-col">
+        <!-- Normalized Event -->
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Normalized Event</span></div>
+          {% if event %}
+          <div class="kv-list">
+            {% for k,v in [
+              ('event_id', event.event_id),('timestamp', event.timestamp),
+              ('source', event.source),('host', event.host),
+              ('user', event.user or '—'),('event_type', event.event_type),
+              ('severity', event.severity),('summary', event.summary),
+            ] %}
+            <div class="kv"><span class="kv-k">{{ k }}</span><span class="kv-v">{{ v }}</span></div>
+            {% endfor %}
+          </div>
+          <div style="padding:0 16px 4px; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--muted);">Fields</div>
+          <div class="kv-list" style="padding-top:4px;">
+            {% if event.fields %}
+              {% if event.fields is mapping %}
+                {% for k, v in event.fields.items() %}
+                <div class="kv"><span class="kv-k">{{ k }}</span><span class="kv-v">{{ v }}</span></div>
+                {% endfor %}
+              {% else %}
+                <span class="kv-v" style="color:var(--muted);">{{ event.fields }}</span>
+              {% endif %}
+            {% else %}
+              <span style="color:var(--muted); font-size:11px;">(no enriched fields)</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <div style="padding:20px; color:var(--muted);">Event not found in DB.</div>
+          {% endif %}
+        </div>
+
+        <!-- Raw log + rule hits -->
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Raw Log</span></div>
+          {% if event %}<div class="raw-block">{{ event.raw }}</div>{% endif %}
+          <div class="panel-header" style="border-top:1px solid var(--border);">
+            <span class="panel-title">Rule Match Conditions</span>
+          </div>
+          {% for rh in rule_hits %}
+          <div style="padding:10px 16px; border-bottom:1px solid rgba(30,39,51,.5);">
+            <div style="font-size:11px; color:var(--text); margin-bottom:6px;">{{ rh.rule_name }}</div>
+            {% if rh.matched_on is iterable and rh.matched_on is not string %}
+              {% for cond in rh.matched_on %}<span class="match-tag">{{ cond }}</span>{% endfor %}
+            {% else %}
+              <span class="match-tag">{{ rh.matched_on }}</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <div style="padding:12px 16px; color:var(--muted); font-size:11px;">No rule hits recorded.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Related Events -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Related Events (±5 min, same host)</span>
+          <span style="font-size:10px; color:var(--muted);">{{ related | length }} events</span>
+        </div>
+        {% if related %}
+        <table>
+          <thead><tr><th>Timestamp</th><th>Source</th><th>Type</th><th>Severity</th><th>User</th><th>Summary</th></tr></thead>
+          <tbody>
+          {% for e in related %}
+          <tr>
+            <td class="mono-sm">{{ e.timestamp[:19].replace('T',' ') }}</td>
+            <td class="mono-sm">{{ e.source }}</td>
+            <td class="mono-sm">{{ e.event_type }}</td>
+            <td><span class="sev sev-{{ e.severity }}">{{ e.severity }}</span></td>
+            <td class="mono-sm">{{ e.user or '—' }}</td>
+            <td style="font-size:11px; color:var(--text2);">{{ e.summary }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div style="padding:20px; text-align:center; color:var(--muted);">No related events found.</div>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- Right: notes history + suppress -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <!-- Notes history -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Investigation Notes</span>
+          <span style="font-size:10px; color:var(--muted);">append-only</span>
+        </div>
+        {% if notes_history %}
+          {% for n in notes_history %}
+          <div class="note-entry">
+            <div class="note-ts">{{ n.created_at[:19].replace('T',' ') }} UTC</div>
+            <div class="note-text">{{ n.note }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="padding:16px; color:var(--muted); font-size:11px;">No notes yet.</div>
+        {% endif %}
+        <!-- Add note -->
+        <div style="padding:10px 16px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
+          <textarea id="new-note" placeholder="Add a note…" style="min-height:48px;"></textarea>
+          <button class="btn btn-primary" onclick="addNote()">Add Note</button>
+          <div class="fade-msg" id="note-msg">✓ Note added — reload to see it</div>
+        </div>
+      </div>
+
+      <!-- Suppress this rule -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Suppress Rule</span>
+          <a href="/suppressions" style="font-size:10px; color:var(--accent2); text-decoration:none;">Manage all →</a>
+        </div>
+
+        {% if active_suppressions %}
+        <div style="padding:10px 16px; border-bottom:1px solid var(--border);">
+          <div style="font-size:10px; color:var(--text2); margin-bottom:6px;">Active suppressions for this rule:</div>
+          {% for s in active_suppressions %}
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; font-size:11px;">
+            <span><span class="supp-badge">{{ s.scope }}{% if s.match_value %}: {{ s.match_value }}{% endif %}</span>
+            {% if s.expires_at %}<span style="color:var(--muted); font-size:10px; margin-left:4px;">expires {{ s.expires_at[:10] }}</span>{% endif %}
+            </span>
+            <form method="POST" action="/suppressions/delete" style="display:inline;">
+              <input type="hidden" name="suppression_id" value="{{ s.id }}">
+              <button type="submit" class="btn btn-danger" style="padding:2px 8px; font-size:10px;">Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="suppress-grid">
+          <div class="suppress-full" style="font-size:11px; color:var(--text2); margin-bottom:4px;">
+            Create suppression for <strong style="color:var(--text);">{{ alert.rule_id }}</strong>:
+          </div>
+
+          <!-- Global suppression -->
+          <form method="POST" action="/suppressions/create" class="suppress-full"
+                style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="rule_id"     value="{{ alert.rule_id }}">
+            <input type="hidden" name="rule_name"   value="{{ alert.rule_name }}">
+            <input type="hidden" name="scope"       value="global">
+            <input type="hidden" name="match_value" value="">
+            <input type="hidden" name="redirect_to" value="/alert/{{ alert.alert_id }}">
+            <select name="duration" style="flex:1; min-width:80px; font-size:11px;">
+              <option value="1h">1 hour</option>
+              <option value="24h">24 hours</option>
+              <option value="7d">7 days</option>
+              <option value="permanent" selected>Permanent</option>
+            </select>
+            <button type="submit" class="btn btn-danger" style="white-space:nowrap;">🔇 Suppress globally</button>
+          </form>
+
+          <!-- Host suppression -->
+          <form method="POST" action="/suppressions/create" class="suppress-full"
+                style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="rule_id"     value="{{ alert.rule_id }}">
+            <input type="hidden" name="rule_name"   value="{{ alert.rule_name }}">
+            <input type="hidden" name="scope"       value="host">
+            <input type="hidden" name="match_value" value="{{ alert.host }}">
+            <input type="hidden" name="redirect_to" value="/alert/{{ alert.alert_id }}">
+            <select name="duration" style="flex:1; min-width:80px; font-size:11px;">
+              <option value="1h">1 hour</option>
+              <option value="24h">24 hours</option>
+              <option value="7d">7 days</option>
+              <option value="permanent" selected>Permanent</option>
+            </select>
+            <button type="submit" class="btn btn-warn" style="white-space:nowrap;">🔇 Suppress for host: {{ alert.host }}</button>
+          </form>
+
+          <!-- User suppression (only if user is set) -->
+          {% if alert.user %}
+          <form method="POST" action="/suppressions/create" class="suppress-full"
+                style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="rule_id"     value="{{ alert.rule_id }}">
+            <input type="hidden" name="rule_name"   value="{{ alert.rule_name }}">
+            <input type="hidden" name="scope"       value="user">
+            <input type="hidden" name="match_value" value="{{ alert.user }}">
+            <input type="hidden" name="redirect_to" value="/alert/{{ alert.alert_id }}">
+            <select name="duration" style="flex:1; min-width:80px; font-size:11px;">
+              <option value="1h">1 hour</option>
+              <option value="24h">24 hours</option>
+              <option value="7d">7 days</option>
+              <option value="permanent" selected>Permanent</option>
+            </select>
+            <button type="submit" class="btn btn-ghost" style="white-space:nowrap;">🔇 Suppress for user: {{ alert.user }}</button>
+          </form>
+          {% endif %}
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+const ALERT_ID = '{{ alert.alert_id }}';
+
+function _flash(id) {
+  const el = document.getElementById(id);
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 2500);
+}
+
+async function saveStatus() {
+  const status = document.getElementById('status-select').value;
+  const notes  = document.getElementById('notes-area').value;
+  const form   = new FormData();
+  form.append('status', status);
+  form.append('notes', notes);
+  await fetch(`/alert/${ALERT_ID}/status`, { method:'POST', body:form });
+  _flash('status-msg');
+}
+
+async function snooze() {
+  const minutes = document.getElementById('snooze-dur').value;
+  const form = new FormData();
+  form.append('minutes', minutes);
+  const r = await fetch(`/alert/${ALERT_ID}/snooze`, { method:'POST', body:form });
+  const d = await r.json();
+  if (d.ok) {
+    _flash('snooze-msg');
+    setTimeout(() => location.reload(), 1200);
+  }
+}
+
+async function unsnooze() {
+  await fetch(`/alert/${ALERT_ID}/unsnooze`, { method:'POST' });
+  location.reload();
+}
+
+async function addNote() {
+  const note = document.getElementById('new-note').value.trim();
+  if (!note) return;
+  const form = new FormData();
+  form.append('note', note);
+  const r = await fetch(`/alert/${ALERT_ID}/note`, { method:'POST', body:form });
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('new-note').value = '';
+    _flash('note-msg');
+  }
+}
+</script>
+</body>
+</html>

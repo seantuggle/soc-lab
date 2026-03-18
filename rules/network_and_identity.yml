@@ -1,0 +1,120 @@
+# rules/dns_and_network.yml
+# ──────────────────────────────────────────────────────────────────────────────
+
+- id: DNS001
+  name: DNS Query to Suspicious TLD
+  description: >
+    A host queried a domain with a commonly-abused TLD used for
+    malware C2, phishing, or free hosting (e.g. .tk, .pw, .xyz, .ru, .top).
+  severity: medium
+  event_type: dns_query
+  match:
+    event_type: dns_suspicious
+    fields.suspicious_tld: "true"
+  tags: [dns, c2, exfiltration]
+  false_positive_notes: >
+    Legitimate services sometimes use non-standard TLDs. Check if the
+    domain resolves to a known CDN or business service.
+  response: |
+    1. Extract the full queried domain from event fields.
+    2. Passive DNS lookup: when was this domain registered?
+    3. Check domain reputation (VirusTotal, Shodan, etc.).
+    4. Review other hosts that queried the same domain.
+    5. If confirmed malicious: block at DNS resolver and firewall.
+
+- id: DNS002
+  name: High-Frequency DNS Queries (Possible Tunneling)
+  description: >
+    An unusually high number of dns_query events from a single host
+    may indicate DNS tunneling for C2 or exfiltration.
+  severity: high
+  window:
+    field: host
+    event_type: dns_query
+    count: 20
+    seconds: 60
+  tags: [dns-tunneling, exfiltration, c2]
+  false_positive_notes: >
+    High DNS volume is normal for DNS resolvers, load balancers, and
+    some monitoring agents. Tune the count threshold for your environment.
+
+
+# rules/user_management.yml
+# ──────────────────────────────────────────────────────────────────────────────
+
+- id: USR001
+  name: New User Account Created
+  description: >
+    A new operating system user account was created. Attackers create
+    backdoor accounts for persistence after initial compromise.
+  severity: high
+  event_type: user_created
+  match:
+    event_type: user_created
+  tags: [persistence, user-management, account-creation]
+  false_positive_notes: >
+    Normal during on-boarding or server provisioning. Correlate with
+    change tickets or CM tools (Ansible, Terraform). Unexpected hosts
+    or off-hours timing increases suspicion.
+  response: |
+    1. Identify the new username and the process that created it.
+    2. Check if there's a change ticket or automation job for this.
+    3. Review who was logged into the host at the time.
+    4. If unexpected: disable the account and investigate.
+
+
+# rules/web_attacks.yml
+# ──────────────────────────────────────────────────────────────────────────────
+
+- id: WEB001
+  name: Excessive 401/403 Responses (Auth Probing)
+  description: >
+    Many HTTP 401 (Unauthorized) or 403 (Forbidden) responses to the
+    same client. Indicates credential probing or authorization bypass attempts.
+  severity: medium
+  window:
+    field: fields.src_ip
+    event_type: web_401
+    count: 10
+    seconds: 60
+  tags: [web, authentication, probing]
+  false_positive_notes: Misconfigured API clients frequently generate 401s.
+
+- id: WEB002
+  name: Excessive 404 Responses (Path Scanning)
+  description: >
+    Many 404 Not Found responses to the same client suggests automated
+    directory or endpoint scanning (dirbuster, gobuster, nikto, etc.).
+  severity: low
+  window:
+    field: fields.src_ip
+    event_type: web_404
+    count: 15
+    seconds: 30
+  tags: [web, scanning, reconnaissance]
+
+
+# rules/impossible_travel.yml
+# ──────────────────────────────────────────────────────────────────────────────
+
+- id: TRAVEL001
+  name: Impossible Travel Detected
+  description: >
+    A user account shows logins from geographically distant locations
+    within a time window that makes physical travel implausible.
+    Indicates shared credentials, VPN bypass, or account compromise.
+  severity: high
+  event_type: impossible_travel
+  match:
+    event_type: impossible_travel
+  tags: [impossible-travel, account-compromise, identity]
+  false_positive_notes: >
+    VPN users, cloud shell users, and proxy users may trigger this.
+    Users who travel legitimately won't trigger the simulated version,
+    but in production systems correlate with VPN logs.
+  response: |
+    1. Record both login locations and timestamps from the event fields.
+    2. Contact the user to verify the logins.
+    3. If unrecognized: immediately reset credentials and review sessions.
+    4. Check for lateral movement from the compromised account.
+    5. Review MFA enrollment (if applicable).

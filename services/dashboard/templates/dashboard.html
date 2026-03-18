@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOC Lab — Dashboard</title>
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0a0c10;
+    --bg2:      #0f1318;
+    --bg3:      #151a22;
+    --border:   #1e2733;
+    --accent:   #00d4aa;
+    --accent2:  #0099ff;
+    --red:      #ff4455;
+    --orange:   #ff8800;
+    --yellow:   #ffcc00;
+    --green:    #00d4aa;
+    --muted:    #4a5568;
+    --text:     #c8d6e5;
+    --text2:    #7a8fa6;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* scan-line effect */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+    );
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 52px;
+    display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--text2); }
+  .header-status {
+    margin-left: auto;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.5; transform:scale(.8); }
+  }
+  .header-time { font-family: var(--mono); color: var(--text2); font-size: 12px; }
+
+  /* ── Layout ── */
+  .main { display: grid; grid-template-columns: 1fr; gap: 0; }
+  .content { padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .stat-card.red::before   { background: var(--red); }
+  .stat-card.orange::before{ background: var(--orange); }
+  .stat-card.accent::before{ background: var(--accent); }
+  .stat-card.blue::before  { background: var(--accent2); }
+  .stat-label { color: var(--text2); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .stat-value { font-family: var(--mono); font-size: 32px; font-weight: 400; line-height: 1; }
+  .stat-card.red    .stat-value { color: var(--red); }
+  .stat-card.orange .stat-value { color: var(--orange); }
+  .stat-card.accent .stat-value { color: var(--accent); }
+  .stat-card.blue   .stat-value { color: var(--accent2); }
+  .stat-sub { color: var(--text2); font-size: 11px; margin-top: 6px; }
+
+  /* ── Two-column grid ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg3);
+  }
+  .panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text2);
+    font-weight: 500;
+  }
+  .panel-badge {
+    background: var(--border);
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+  .panel-body { padding: 0; }
+
+  /* ── Alert table ── */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(30,39,51,0.6);
+    vertical-align: middle;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  tr:last-child td { border-bottom: none; }
+
+  .sev {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--mono);
+  }
+  .sev-high   { background: rgba(255,68,85,.15);  color: var(--red);    border: 1px solid rgba(255,68,85,.3); }
+  .sev-medium { background: rgba(255,136,0,.12);  color: var(--orange); border: 1px solid rgba(255,136,0,.3); }
+  .sev-low    { background: rgba(255,204,0,.10);  color: var(--yellow); border: 1px solid rgba(255,204,0,.3); }
+  .sev-info   { background: rgba(74,85,104,.2);   color: var(--text2);  border: 1px solid rgba(74,85,104,.4); }
+
+  .status-open         { color: var(--red);    }
+  .status-investigating{ color: var(--orange); }
+  .status-closed       { color: var(--text2);  }
+
+  .mono-sm { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+  .link { color: var(--accent2); text-decoration: none; cursor: pointer; }
+  .link:hover { text-decoration: underline; color: var(--accent); }
+
+  .truncate { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Source health ── */
+  .source-list { padding: 8px 0; }
+  .source-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(30,39,51,0.5);
+  }
+  .source-item:last-child { border-bottom: none; }
+  .source-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .source-dot.active  { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+  .source-dot.stale   { background: var(--orange); }
+  .source-dot.unknown { background: var(--muted); }
+  .source-name { font-family: var(--mono); font-size: 12px; flex: 1; }
+  .source-cnt  { color: var(--text2); font-size: 11px; }
+
+  /* ── Top rules ── */
+  .rule-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(30,39,51,0.5);
+  }
+  .rule-item:last-child { border-bottom: none; }
+  .rule-bar-wrap { flex: 1; height: 3px; background: var(--border); border-radius: 2px; }
+  .rule-bar { height: 100%; border-radius: 2px; background: var(--accent2); }
+  .rule-name { font-size: 11px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  .rule-cnt  { font-family: var(--mono); font-size: 11px; color: var(--accent2); min-width: 24px; text-align: right; }
+
+  /* ── Events stream ── */
+  .event-row {
+    display: grid;
+    grid-template-columns: 140px 90px 110px 80px 1fr;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(30,39,51,0.5);
+    align-items: center;
+    font-size: 12px;
+  }
+  .event-row:last-child { border-bottom: none; }
+  .event-row:hover { background: rgba(255,255,255,0.02); }
+  .event-ts  { font-family: var(--mono); color: var(--text2); font-size: 10px; }
+  .event-src { font-family: var(--mono); font-size: 10px; }
+  .src-sim  { color: #a78bfa; }
+  .src-auth { color: #60a5fa; }
+  .event-type { font-family: var(--mono); font-size: 10px; color: var(--text); }
+  .event-sum  { color: var(--text2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Empty state ── */
+  .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+  .empty-icon { font-size: 24px; margin-bottom: 8px; }
+
+  /* ── Auto-refresh indicator ── */
+  .refresh-bar {
+    height: 2px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .refresh-bar::after {
+    content: '';
+    position: absolute; top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: sweep 10s linear infinite;
+  }
+  @keyframes sweep { to { left: 100%; } }
+
+  /* ── Scrollable table body ── */
+  .scrollable { max-height: 400px; overflow-y: auto; }
+  .scrollable::-webkit-scrollbar { width: 4px; }
+  .scrollable::-webkit-scrollbar-track { background: transparent; }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Sortable / filterable table headers ── */
+  th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th.sortable:hover { color: var(--text); }
+  th.sortable.asc  { color: var(--accent); }
+  th.sortable.desc { color: var(--accent); }
+  .sort-icon { margin-left: 4px; opacity: 0.4; font-size: 8px; }
+  th.sortable.asc  .sort-icon,
+  th.sortable.desc .sort-icon { opacity: 1; }
+
+  /* filter row */
+  tr.filter-row th {
+    padding: 4px 6px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-input, .filter-select {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .filter-input:focus, .filter-select:focus  { border-color: var(--accent2); }
+  .filter-input::placeholder { color: var(--muted); }
+  .filter-select option { background: var(--bg3); color: var(--text); }
+
+  /* active filter highlight */
+  .filter-input.active, .filter-select.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* filter toolbar */
+  .filter-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text2);
+  }
+  .filter-count { font-family: var(--mono); color: var(--accent2); }
+  .filter-clear {
+    margin-left: auto;
+    background: none; border: 1px solid var(--border);
+    color: var(--text2); font-size: 10px; padding: 2px 8px;
+    border-radius: 3px; cursor: pointer; font-family: var(--mono);
+  }
+  .filter-clear:hover { border-color: var(--red); color: var(--red); }
+  .filter-clear:disabled { opacity: 0.3; cursor: default; }
+  tr.hidden-row { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <div class="header-status">
+    <div class="pulse"></div>
+    <span class="header-time" id="clock">--:--:-- UTC</span>
+  </div>
+</header>
+
+<div class="refresh-bar"></div>
+
+<div class="main">
+  <div class="content">
+
+    <!-- Stats Row -->
+    <div class="stats-row">
+      <div class="stat-card red">
+        <div class="stat-label">Open Alerts</div>
+        <div class="stat-value">{{ stats.open_alerts }}</div>
+        <div class="stat-sub">{{ stats.total_alerts }} total</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Events (1h)</div>
+        <div class="stat-value">{{ stats.events_1h }}</div>
+        <div class="stat-sub">{{ stats.total_events }} total</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-label">Active Sources</div>
+        <div class="stat-value">{{ stats.source_health | length }}</div>
+        <div class="stat-sub">ingestion healthy</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Rules Fired (24h)</div>
+        <div class="stat-value">{{ stats.recent_rules | map(attribute='cnt') | sum }}</div>
+        <div class="stat-sub">{{ stats.recent_rules | length }} distinct rules</div>
+      </div>
+    </div>
+
+    <!-- Alerts + Sidebar -->
+    <div class="three-col">
+
+      <!-- Alert Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Active Alerts</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            {% if stats.snoozed_cnt > 0 %}
+            <a href="/?show_snoozed={% if show_snoozed %}0{% else %}1{% endif %}"
+               style="font-size:10px; font-family:var(--mono); color:{% if show_snoozed %}var(--accent){% else %}var(--text2){% endif %}; text-decoration:none; border:1px solid var(--border); padding:2px 7px; border-radius:2px;">
+              {% if show_snoozed %}● hide snoozed{% else %}💤 {{ stats.snoozed_cnt }} snoozed{% endif %}
+            </a>
+            {% endif %}
+            {% if stats.active_suppressions > 0 %}
+            <a href="/suppressions"
+               style="font-size:10px; font-family:var(--mono); color:var(--orange); text-decoration:none; border:1px solid rgba(255,136,0,.3); padding:2px 7px; border-radius:2px;">
+              🔇 {{ stats.active_suppressions }} suppressed
+            </a>
+            {% endif %}
+            <span class="panel-badge" id="alert-badge">{{ alerts | length }}</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          {% if alerts %}
+
+          <!-- Filter toolbar -->
+          <div class="filter-toolbar">
+            <span>Showing <span class="filter-count" id="visible-count">{{ alerts | length }}</span> of {{ alerts | length }}</span>
+            <button class="filter-clear" id="clear-btn" onclick="clearFilters()" disabled>✕ Clear filters</button>
+          </div>
+
+          <div class="scrollable">
+          <table id="alerts-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-col="0" onclick="sortTable(0)">Time <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-col="1" onclick="sortTable(1)">Severity <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-col="2" onclick="sortTable(2)">Rule <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-col="3" onclick="sortTable(3)">Host <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-col="4" onclick="sortTable(4)">Status <span class="sort-icon">⇅</span></th>
+                <th></th>
+              </tr>
+              <tr class="filter-row">
+                <th><input class="filter-input" id="f-time"     placeholder="e.g. 2025-03"  oninput="applyFilters()"></th>
+                <th>
+                  <select class="filter-select" id="f-severity" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="high">high</option>
+                    <option value="medium">medium</option>
+                    <option value="low">low</option>
+                    <option value="info">info</option>
+                  </select>
+                </th>
+                <th><input class="filter-input" id="f-rule"     placeholder="rule name…"    oninput="applyFilters()"></th>
+                <th><input class="filter-input" id="f-host"     placeholder="hostname…"     oninput="applyFilters()"></th>
+                <th>
+                  <select class="filter-select" id="f-status" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="open">open</option>
+                    <option value="investigating">investigating</option>
+                    <option value="closed">closed</option>
+                  </select>
+                </th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="alerts-tbody">
+            {% for a in alerts %}
+            {% set is_snoozed = a.snoozed_until and a.snoozed_until > now %}
+            <tr data-time="{{ a.created_at[:19].replace('T',' ') }}"
+                data-severity="{{ a.severity }}"
+                data-rule="{{ a.rule_name | lower }}"
+                data-host="{{ a.host | lower }}"
+                data-status="{{ a.status }}"
+                {% if is_snoozed %}style="opacity:0.5;"{% endif %}>
+              <td class="mono-sm">
+                {{ a.created_at[:19].replace('T',' ') }}
+                {% if is_snoozed %}<span style="color:var(--text2); font-size:9px; margin-left:4px;">💤</span>{% endif %}
+              </td>
+              <td>
+                <span class="sev sev-{{ a.severity }}">{{ a.severity }}</span>
+              </td>
+              <td class="truncate" style="max-width:180px; font-size:11px;">{{ a.rule_name }}</td>
+              <td class="mono-sm">{{ a.host }}</td>
+              <td class="status-{{ a.status }} mono-sm">{{ a.status }}</td>
+              <td>
+                {% if a.hit_count and a.hit_count > 1 %}
+                <span style="font-family:var(--mono); font-size:10px; background:rgba(255,136,0,.15); color:var(--orange); border:1px solid rgba(255,136,0,.3); padding:1px 6px; border-radius:2px; margin-right:4px;">×{{ a.hit_count }}</span>
+                {% endif %}
+                <a href="/alert/{{ a.alert_id }}" class="link" style="font-size:11px;">
+                  Investigate →
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          </div>
+          {% else %}
+          <div class="empty">
+            <div class="empty-icon">✓</div>
+            No active alerts
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div style="display:flex; flex-direction:column; gap:16px;">
+
+        <!-- Source Health -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Source Health</span>
+          </div>
+          <div class="source-list">
+            {% for s in stats.source_health %}
+            <div class="source-item">
+              <div class="source-dot active"></div>
+              <span class="source-name">{{ s.source }}</span>
+              <span class="source-cnt">{{ s.events_1h }}/h</span>
+            </div>
+            {% else %}
+            <div class="source-item">
+              <div class="source-dot unknown"></div>
+              <span class="source-name" style="color:var(--muted)">No sources yet</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Top Rules -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Top Rules (24h)</span>
+          </div>
+          <div>
+            {% set max_cnt = (stats.recent_rules | map(attribute='cnt') | max) if stats.recent_rules else 1 %}
+            {% for r in stats.recent_rules %}
+            <div class="rule-item">
+              <span class="rule-name">{{ r.rule_name }}</span>
+              <div class="rule-bar-wrap">
+                <div class="rule-bar" style="width: {{ (r.cnt / max_cnt * 100) | int }}%"></div>
+              </div>
+              <span class="rule-cnt">{{ r.cnt }}</span>
+            </div>
+            {% else %}
+            <div class="empty">No rule hits yet</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Severity Breakdown -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Alert Severity</span>
+          </div>
+          <div style="padding: 12px 16px; display:flex; flex-direction:column; gap:8px;">
+            {% for sev in ['high','medium','low','info'] %}
+            {% set item = stats.by_severity | selectattr('severity','equalto',sev) | first | default(none) %}
+            {% set cnt = item.cnt if item else 0 %}
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="sev sev-{{ sev }}" style="width:54px; text-align:center;">{{ sev }}</span>
+              <div style="flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                {% if stats.open_alerts > 0 %}
+                <div style="height:100%; width:{{ (cnt / stats.open_alerts * 100)|int }}%;
+                  background: {% if sev=='high' %}var(--red){% elif sev=='medium' %}var(--orange){% elif sev=='low' %}var(--yellow){% else %}var(--muted){% endif %};
+                  border-radius:2px;"></div>
+                {% endif %}
+              </div>
+              <span class="mono-sm" style="min-width:20px; text-align:right;">{{ cnt }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Event Stream -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Event Stream</span>
+        <span class="panel-badge" style="color:var(--accent)">LIVE</span>
+      </div>
+      <div>
+        <div class="event-row" style="opacity:0.5; font-size:10px; border-bottom: 1px solid var(--border);">
+          <span>TIMESTAMP</span><span>SOURCE</span><span>TYPE</span><span>SEV</span><span>SUMMARY</span>
+        </div>
+        {% for e in events %}
+        <div class="event-row">
+          <span class="event-ts">{{ e.timestamp[:19].replace('T',' ') }}</span>
+          <span class="event-src {% if e.source == 'sim-endpoint' %}src-sim{% else %}src-auth{% endif %}">
+            {{ e.source }}
+          </span>
+          <span class="event-type">{{ e.event_type }}</span>
+          <span><span class="sev sev-{{ e.severity }}">{{ e.severity }}</span></span>
+          <span class="event-sum">{{ e.summary }}</span>
+        </div>
+        {% else %}
+        <div class="empty">
+          <div class="empty-icon">📡</div>
+          Waiting for events…<br>
+          <span style="color:var(--text2); font-size:11px;">Run: <code style="font-family:var(--mono)">python tools/generate_events.py --scenario brute_force</code></span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ── Live clock ──────────────────────────────────────────────────
+  function tick() {
+    const d = new Date();
+    document.getElementById('clock').textContent =
+      d.toUTCString().replace(/.*(\d\d:\d\d:\d\d) GMT/, '$1') + ' UTC';
+  }
+  tick(); setInterval(tick, 1000);
+
+  // ── Auto-refresh (skips if a filter is active) ──────────────────
+  setTimeout(() => {
+    if (!hasActiveFilters()) location.reload();
+  }, 10000);
+
+  function hasActiveFilters() {
+    return ['f-time','f-rule','f-host'].some(id => {
+      const el = document.getElementById(id);
+      return el && el.value.trim() !== '';
+    }) || ['f-severity','f-status'].some(id => {
+      const el = document.getElementById(id);
+      return el && el.value !== '';
+    });
+  }
+
+  // ── Sorting ─────────────────────────────────────────────────────
+  // severity order for sort purposes
+  const SEV_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
+  const STATUS_ORDER = { open: 0, investigating: 1, closed: 2 };
+
+  let sortCol = -1, sortDir = 1; // 1 = asc, -1 = desc
+
+  function sortTable(col) {
+    const tbody  = document.getElementById('alerts-tbody');
+    const ths    = document.querySelectorAll('#alerts-table thead tr:first-child th.sortable');
+    const rows   = Array.from(tbody.querySelectorAll('tr'));
+
+    // Toggle direction if same column, else start ascending
+    if (sortCol === col) {
+      sortDir = -sortDir;
+    } else {
+      sortCol = col;
+      sortDir = 1;
+    }
+
+    // Update header indicators
+    ths.forEach((th, i) => {
+      th.classList.remove('asc', 'desc');
+      th.querySelector('.sort-icon').textContent = '⇅';
+      if (i === col) {
+        th.classList.add(sortDir === 1 ? 'asc' : 'desc');
+        th.querySelector('.sort-icon').textContent = sortDir === 1 ? '▲' : '▼';
+      }
+    });
+
+    rows.sort((a, b) => {
+      let va, vb;
+      switch (col) {
+        case 0: va = a.dataset.time;     vb = b.dataset.time;     break;
+        case 1: va = SEV_ORDER[a.dataset.severity] ?? 99;
+                vb = SEV_ORDER[b.dataset.severity] ?? 99;
+                return sortDir * (va - vb);
+        case 2: va = a.dataset.rule;     vb = b.dataset.rule;     break;
+        case 3: va = a.dataset.host;     vb = b.dataset.host;     break;
+        case 4: va = STATUS_ORDER[a.dataset.status] ?? 99;
+                vb = STATUS_ORDER[b.dataset.status] ?? 99;
+                return sortDir * (va - vb);
+        default: return 0;
+      }
+      return sortDir * va.localeCompare(vb);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+    updateVisibleCount();
+  }
+
+  // ── Filtering ───────────────────────────────────────────────────
+  function applyFilters() {
+    const fTime = document.getElementById('f-time').value.trim().toLowerCase();
+    const fSev  = document.getElementById('f-severity').value;
+    const fRule = document.getElementById('f-rule').value.trim().toLowerCase();
+    const fHost = document.getElementById('f-host').value.trim().toLowerCase();
+    const fStat = document.getElementById('f-status').value;
+
+    // Highlight active filter inputs
+    ['f-time','f-rule','f-host'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.toggle('active', el.value.trim() !== '');
+    });
+    ['f-severity','f-status'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.toggle('active', el.value !== '');
+    });
+
+    const rows = document.querySelectorAll('#alerts-tbody tr');
+    rows.forEach(row => {
+      const show =
+        (!fTime || row.dataset.time.includes(fTime))      &&
+        (!fSev  || row.dataset.severity === fSev)          &&
+        (!fRule || row.dataset.rule.includes(fRule))       &&
+        (!fHost || row.dataset.host.includes(fHost))       &&
+        (!fStat || row.dataset.status === fStat);
+      row.classList.toggle('hidden-row', !show);
+    });
+
+    document.getElementById('clear-btn').disabled = !hasActiveFilters();
+    updateVisibleCount();
+  }
+
+  function clearFilters() {
+    ['f-time','f-rule','f-host'].forEach(id => {
+      document.getElementById(id).value = '';
+      document.getElementById(id).classList.remove('active');
+    });
+    ['f-severity','f-status'].forEach(id => {
+      document.getElementById(id).value = '';
+      document.getElementById(id).classList.remove('active');
+    });
+    document.querySelectorAll('#alerts-tbody tr').forEach(r => r.classList.remove('hidden-row'));
+    document.getElementById('clear-btn').disabled = true;
+    updateVisibleCount();
+  }
+
+  function updateVisibleCount() {
+    const total   = document.querySelectorAll('#alerts-tbody tr').length;
+    const visible = document.querySelectorAll('#alerts-tbody tr:not(.hidden-row)').length;
+    const el = document.getElementById('visible-count');
+    if (el) {
+      el.textContent = visible;
+      el.style.color = visible < total ? 'var(--orange)' : 'var(--accent2)';
+    }
+    const badge = document.getElementById('alert-badge');
+    if (badge) badge.textContent = visible < total ? `${visible}/${total}` : total;
+  }
+</script>
+</body>
+</html>

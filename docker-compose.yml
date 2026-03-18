@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./db:/app/db
+      - ./rules:/app/rules
+      - ./sample_logs:/app/sample_logs
+    environment:
+      - DB_PATH=/app/db/soc.db
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  detection:
+    build:
+      context: .
+      dockerfile: services/detection/Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./db:/app/db
+      - ./rules:/app/rules
+    environment:
+      - DB_PATH=/app/db/soc.db
+      - LOG_LEVEL=INFO
+      - DEDUP_WINDOW_SECS=3600
+    depends_on:
+      ingestion:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./db:/app/db
+    environment:
+      - DB_PATH=/app/db/soc.db
+      - LOG_LEVEL=INFO
+    depends_on:
+      ingestion:
+        condition: service_healthy
+
+  simulator:
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+    environment:
+      - INGESTION_URL=http://ingestion:8001
+    depends_on:
+      ingestion:
+        condition: service_healthy
+    command: ["python", "generate_events.py", "--scenario", "all", "--loop", "--interval", "3"]

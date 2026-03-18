@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — Suppressions</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --bg2:#0f1318; --bg3:#151a22; --border:#1e2733;
+    --accent:#00d4aa; --accent2:#0099ff; --red:#ff4455; --orange:#ff8800;
+    --yellow:#ffcc00; --muted:#4a5568; --text:#c8d6e5; --text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13px; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  }
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:0 24px; height:52px; display:flex; align-items:center; gap:16px;
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-family:var(--mono); font-size:15px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; }
+  .logo span { color:var(--text2); }
+  .back { color:var(--accent2); text-decoration:none; font-size:12px; margin-left:auto; }
+  .back:hover { color:var(--accent); }
+
+  .content { padding:24px; max-width:1000px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+
+  .page-title { font-size:20px; font-weight:600; color:var(--text); }
+  .page-sub   { color:var(--text2); font-size:12px; margin-top:4px; }
+
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .panel-header {
+    padding:10px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; background:var(--bg3);
+  }
+  .panel-title { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--text2); font-weight:500; }
+  .panel-badge { background:var(--border); color:var(--text2); font-family:var(--mono); font-size:10px; padding:2px 6px; border-radius:2px; }
+
+  table { width:100%; border-collapse:collapse; }
+  th { padding:8px 12px; text-align:left; font-size:9px; text-transform:uppercase;
+       letter-spacing:1.5px; color:var(--muted); border-bottom:1px solid var(--border); background:var(--bg3); }
+  td { padding:9px 12px; border-bottom:1px solid rgba(30,39,51,.6); font-size:12px; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(255,255,255,.02); }
+  tr.expired td { opacity:0.4; }
+
+  .mono-sm { font-family:var(--mono); font-size:11px; color:var(--text2); }
+
+  .scope-tag {
+    display:inline-block; padding:2px 7px; border-radius:2px; font-family:var(--mono);
+    font-size:10px; text-transform:uppercase; letter-spacing:1px;
+  }
+  .scope-global { background:rgba(255,68,85,.12); color:var(--red);    border:1px solid rgba(255,68,85,.3); }
+  .scope-host   { background:rgba(255,136,0,.1);  color:var(--orange); border:1px solid rgba(255,136,0,.3); }
+  .scope-user   { background:rgba(0,153,255,.1);  color:var(--accent2);border:1px solid rgba(0,153,255,.3); }
+
+  .status-active  { color:var(--accent); font-family:var(--mono); font-size:10px; }
+  .status-expired { color:var(--muted);  font-family:var(--mono); font-size:10px; }
+
+  .btn { border:none; padding:5px 12px; border-radius:3px; cursor:pointer; font-size:11px; }
+  .btn-danger { background:rgba(255,68,85,.12); color:var(--red); border:1px solid rgba(255,68,85,.3); }
+  .btn-danger:hover { background:rgba(255,68,85,.25); }
+
+  .empty { padding:40px; text-align:center; color:var(--muted); }
+  .empty-icon { font-size:28px; margin-bottom:8px; }
+
+  .info-box {
+    background:rgba(0,153,255,.06); border:1px solid rgba(0,153,255,.2);
+    border-radius:4px; padding:14px 18px; font-size:12px; color:var(--text2); line-height:1.7;
+  }
+  .info-box strong { color:var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</header>
+
+<div class="content">
+
+  <div>
+    <div class="page-title">🔇 Suppression Rules</div>
+    <div class="page-sub">Active suppressions prevent new alerts from being created by the detection engine.</div>
+  </div>
+
+  <div class="info-box">
+    <strong>How suppressions work:</strong>
+    Suppressions are checked by the detection engine <em>before</em> an alert is written.
+    If a rule fires and an active suppression matches (by global, host, or user scope),
+    no alert is created — but the rule hit is still logged with a <code>[SUPPRESSED]</code> tag.
+    Suppressions are created from individual alert investigation pages.
+    They can be temporary (1h / 24h / 7d) or permanent.
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">All Suppressions</span>
+      <span class="panel-badge">{{ active_count }} active / {{ suppressions | length }} total</span>
+    </div>
+
+    {% if suppressions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Rule</th>
+          <th>Scope</th>
+          <th>Match Value</th>
+          <th>Created</th>
+          <th>Expires</th>
+          <th>Hits</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in suppressions %}
+      <tr {% if not s.is_active %}class="expired"{% endif %}>
+        <td>
+          <span style="font-family:var(--mono); font-size:11px; color:var(--accent2);">{{ s.rule_id }}</span>
+          <div style="font-size:11px; color:var(--text2); margin-top:2px;">{{ s.rule_name }}</div>
+        </td>
+        <td><span class="scope-tag scope-{{ s.scope }}">{{ s.scope }}</span></td>
+        <td class="mono-sm">{{ s.match_value or '—' }}</td>
+        <td class="mono-sm">{{ s.created_at[:16].replace('T',' ') }}</td>
+        <td class="mono-sm">
+          {% if s.expires_at %}{{ s.expires_at[:16].replace('T',' ') }}{% else %}∞ permanent{% endif %}
+        </td>
+        <td>
+          <span style="font-family:var(--mono); font-size:12px;
+            color:{% if s.suppressed_hits > 0 %}var(--orange){% else %}var(--muted){% endif %};">
+            {{ s.suppressed_hits }}
+          </span>
+        </td>
+        <td>
+          <span class="{% if s.is_active %}status-active{% else %}status-expired{% endif %}">
+            {% if s.is_active %}● active{% else %}○ expired{% endif %}
+          </span>
+        </td>
+        <td>
+          <form method="POST" action="/suppressions/delete" style="display:inline;">
+            <input type="hidden" name="suppression_id" value="{{ s.id }}">
+            <button type="submit" class="btn btn-danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon">🔓</div>
+      No suppressions configured.<br>
+      <span style="font-size:11px; margin-top:6px; display:block;">
+        Create suppressions from the alert investigation page.
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+</body>
+</html>

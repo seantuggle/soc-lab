@@ -1,0 +1,59 @@
+# rules/brute_force.yml
+# ──────────────────────────────────────────────────────────────────────────────
+# Rules related to authentication attacks
+
+- id: BF001
+  name: SSH Brute Force
+  description: >
+    Multiple failed SSH logins from the same source IP in a short window.
+    Threshold: 5 failures in 60 seconds. A classic brute-force indicator.
+  severity: high
+  tags: [brute-force, authentication, lateral-movement]
+  window:
+    field: fields.src_ip
+    event_type: auth_fail
+    count: 5
+    seconds: 60
+  false_positive_notes: >
+    Can fire on misconfigured services, old SSH keys, or automated scripts.
+    Check if the source IP is an internal tool or CI system.
+  response: |
+    1. Identify source IP from alert fields.
+    2. Check if IP is internal or external (geo lookup).
+    3. Review auth.log for the targeted username(s).
+    4. If external: consider firewall block or fail2ban rule.
+    5. If internal: investigate the source host for compromise.
+
+- id: BF002
+  name: Credential Stuffing - Fail then Success
+  description: >
+    Multiple failed logins from an IP followed by a successful login from
+    the same IP. Classic credential-stuffing or password-spray success.
+  severity: high
+  type: fail_then_success
+  fail_threshold: 3
+  window_seconds: 300
+  tags: [credential-stuffing, authentication]
+  false_positive_notes: >
+    A user who mistyped their password several times then logged in correctly
+    will trigger this. Review the username and IP context.
+  response: |
+    1. Identify the username that succeeded.
+    2. Check if this is a known user on a known device.
+    3. If the IP is foreign or unexpected: assume compromise.
+    4. Initiate password reset and session revocation.
+    5. Notify the account owner.
+
+- id: BF003
+  name: Rapid Login Failures (Same User)
+  description: >
+    More than 10 auth_fail events for a single user within 2 minutes.
+    Targeted brute-force of a specific account.
+  severity: medium
+  window:
+    field: user
+    event_type: auth_fail
+    count: 10
+    seconds: 120
+  tags: [brute-force, account-targeted]
+  false_positive_notes: A user who forgot their password may trigger this.

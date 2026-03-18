@@ -1,0 +1,59 @@
+# rules/suspicious_process.yml
+# ──────────────────────────────────────────────────────────────────────────────
+# Rules targeting suspicious process execution patterns
+
+- id: PROC001
+  name: Suspicious PowerShell Execution
+  description: >
+    Detects PowerShell-like command line patterns commonly seen in living-off-the-land
+    attacks: encoded commands, download cradles, bypass flags, etc.
+  severity: high
+  event_type: process_start
+  match:
+    event_type: process_start
+    fields.command_line: ~(?i)(encodedcommand|downloadstring|iex\s|invoke-expression|bypass|hidden|-nop|webclient|downloadfile|base64)
+  tags: [powershell, lolbas, execution]
+  false_positive_notes: >
+    Legitimate admin scripts may use -EncodedCommand or -NonInteractive.
+    Tune to your environment's normal PowerShell usage.
+  response: |
+    1. Capture the full command line from the raw event.
+    2. If base64 encoded, decode and inspect.
+    3. Check parent process (if available).
+    4. Review network connections from the same host at the same time.
+    5. If malicious: isolate host and escalate to IR.
+
+- id: PROC002
+  name: Process Launched from Temp Directory
+  description: >
+    An executable was launched from /tmp, %TEMP%, or a user's Downloads/temp
+    folder. Malware frequently writes to temp dirs before executing.
+  severity: high
+  event_type: process_start
+  match:
+    event_type: process_start
+    fields.file_path: ~(?i)(\\temp\\|/tmp/|\\downloads\\|appdata\\local\\temp)
+  tags: [execution, temp-dir, dropper]
+  false_positive_notes: >
+    Installers legitimately run from temp dirs. Check if the binary is signed
+    and expected. Many software updaters use temp directories.
+  response: |
+    1. Check the process name and full path.
+    2. Look for the binary on the file system (if available).
+    3. Review what network connections or file writes followed.
+    4. Check if the process spawned child processes.
+
+- id: PROC003
+  name: Sudo Command Execution
+  description: >
+    A user executed a command with sudo privileges. Elevated execution
+    is normal but worth logging and reviewing for anomalies.
+  severity: low
+  event_type: process_start
+  match:
+    event_type: process_start
+    fields.via: sudo
+  tags: [privilege-escalation, sudo]
+  false_positive_notes: >
+    Normal admin operations. Only escalate if the user is unexpected,
+    the command is sensitive (passwd, visudo, crontab), or timing is odd.
