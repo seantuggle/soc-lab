@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — Export Alerts</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --bg2:#0f1318; --bg3:#151a22; --border:#1e2733;
+    --accent:#00d4aa; --accent2:#0099ff; --red:#ff4455; --orange:#ff8800;
+    --yellow:#ffcc00; --muted:#4a5568; --text:#c8d6e5; --text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13px; min-height:100vh; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  }
+
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:0 24px; height:52px; display:flex; align-items:center; gap:16px;
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-family:var(--mono); font-size:15px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; }
+  .logo span { color:var(--text2); }
+  nav { display:flex; gap:4px; margin-left:24px; }
+  nav a {
+    font-family:var(--mono); font-size:11px; color:var(--text2); text-decoration:none;
+    padding:4px 10px; border-radius:3px; border:1px solid transparent; transition:border-color .15s,color .15s;
+  }
+  nav a:hover  { border-color:var(--border); color:var(--text); }
+  nav a.active { border-color:var(--accent); color:var(--accent); }
+  .back { margin-left:auto; color:var(--accent2); text-decoration:none; font-size:12px; }
+  .back:hover { color:var(--accent); }
+
+  .content { max-width:800px; margin:0 auto; padding:32px 24px; display:flex; flex-direction:column; gap:24px; }
+
+  .page-title { font-size:22px; font-weight:600; }
+  .page-sub   { color:var(--text2); font-size:12px; margin-top:4px; }
+
+  /* ── Panel ── */
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .panel-header {
+    padding:10px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; background:var(--bg3);
+  }
+  .panel-title { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--text2); font-weight:500; }
+
+  /* ── Form ── */
+  .form-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:20px;
+  }
+  .form-group { display:flex; flex-direction:column; gap:6px; }
+  .form-group.full { grid-column:1/-1; }
+  label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--text2); }
+
+  select, input[type="text"] {
+    background:var(--bg3); border:1px solid var(--border); color:var(--text);
+    padding:7px 10px; border-radius:3px; font-family:var(--mono); font-size:12px;
+    outline:none; transition:border-color .15s;
+  }
+  select:focus, input:focus { border-color:var(--accent2); }
+  select option { background:var(--bg3); }
+
+  /* ── Preview bar ── */
+  .preview-bar {
+    margin:0 20px 20px; padding:14px 16px;
+    background:var(--bg3); border:1px solid var(--border); border-radius:4px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .preview-label { font-size:11px; color:var(--text2); }
+  .preview-count {
+    font-family:var(--mono); font-size:28px; color:var(--accent2); line-height:1;
+    transition:color .2s;
+  }
+  .preview-count.zero { color:var(--muted); }
+  .preview-count.loading { color:var(--text2); }
+  .preview-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+
+  /* ── Download buttons ── */
+  .dl-row {
+    display:flex; gap:12px; padding:0 20px 20px; flex-wrap:wrap;
+  }
+  .dl-btn {
+    display:flex; align-items:center; gap:8px;
+    padding:10px 20px; border-radius:4px; border:none; cursor:pointer;
+    font-size:13px; font-weight:500; font-family:var(--sans);
+    transition:transform .1s, box-shadow .1s;
+  }
+  .dl-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.4); }
+  .dl-btn:active { transform:translateY(0); }
+  .dl-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+
+  .btn-csv  { background:rgba(0,212,170,.15); color:var(--accent);  border:1px solid rgba(0,212,170,.4); }
+  .btn-csv:hover:not(:disabled)  { background:rgba(0,212,170,.25); }
+  .btn-json { background:rgba(0,153,255,.15); color:var(--accent2); border:1px solid rgba(0,153,255,.4); }
+  .btn-json:hover:not(:disabled) { background:rgba(0,153,255,.25); }
+
+  .btn-icon { font-size:16px; }
+
+  /* ── Column list ── */
+  .col-list {
+    display:flex; flex-wrap:wrap; gap:6px; padding:14px 16px;
+  }
+  .col-pill {
+    font-family:var(--mono); font-size:10px;
+    background:var(--bg3); border:1px solid var(--border);
+    color:var(--text2); padding:3px 8px; border-radius:2px;
+  }
+
+  /* ── Info box ── */
+  .info-box {
+    background:rgba(0,153,255,.06); border:1px solid rgba(0,153,255,.2);
+    border-radius:4px; padding:14px 18px; font-size:12px; color:var(--text2); line-height:1.8;
+  }
+  .info-box strong { color:var(--text); }
+  code {
+    font-family:var(--mono); font-size:11px;
+    background:var(--bg3); padding:1px 5px; border-radius:2px;
+  }
+
+  /* ── Divider ── */
+  .divider { height:1px; background:var(--border); margin:0 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/attack-coverage">ATT&amp;CK Coverage</a>
+    <a href="/suppressions">Suppressions</a>
+    <a href="/alerts/export-ui" class="active">Export</a>
+  </nav>
+  <a href="/" class="back">← Dashboard</a>
+</header>
+
+<div class="content">
+
+  <div>
+    <div class="page-title">Export Alerts</div>
+    <div class="page-sub">
+      {{ total | default(0) }} total alerts in database
+      {% if oldest and oldest != '—' %} · earliest: {{ oldest }}{% endif %}
+      · no row limit
+    </div>
+  </div>
+
+  <!-- Filter + Export panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Filters</span>
+      <span style="font-size:10px; color:var(--text2);">All filters are optional — leave blank to export everything</span>
+    </div>
+
+    <div class="form-grid">
+
+      <!-- Date range -->
+      <div class="form-group">
+        <label>Date Range</label>
+        <select id="f-days" onchange="updatePreview()">
+          <option value="0">All time</option>
+          <option value="1">Last 24 hours</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last year</option>
+        </select>
+      </div>
+
+      <!-- Severity -->
+      <div class="form-group">
+        <label>Severity</label>
+        <select id="f-severity" onchange="updatePreview()">
+          <option value="">All severities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Info</option>
+        </select>
+      </div>
+
+      <!-- Status -->
+      <div class="form-group">
+        <label>Status</label>
+        <select id="f-status" onchange="updatePreview()">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="investigating">Investigating</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+
+      <!-- Show snoozed -->
+      <div class="form-group">
+        <label>Snoozed Alerts</label>
+        <select id="f-snoozed" onchange="updatePreview()">
+          <option value="0">Exclude snoozed</option>
+          <option value="1">Include snoozed</option>
+        </select>
+      </div>
+
+      <!-- Host -->
+      <div class="form-group">
+        <label>Host</label>
+        <select id="f-host" onchange="updatePreview()">
+          <option value="">All hosts</option>
+          {% for h in hosts %}
+          <option value="{{ h }}">{{ h }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Rule -->
+      <div class="form-group">
+        <label>Rule</label>
+        <select id="f-rule" onchange="updatePreview()">
+          <option value="">All rules</option>
+          {% for r in rules %}
+          <option value="{{ r }}">{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Live preview -->
+    <div class="preview-bar">
+      <div>
+        <div class="preview-label">Matching alerts</div>
+        <div class="preview-count" id="preview-count">—</div>
+        <div class="preview-meta" id="preview-meta">Select filters above</div>
+      </div>
+      <div style="margin-left:auto; font-size:11px; color:var(--text2); text-align:right; line-height:1.7;">
+        Exports include all matching rows<br>
+        <span style="color:var(--muted);">No 50-row limit</span>
+      </div>
+    </div>
+
+    <!-- Download buttons -->
+    <div class="dl-row">
+      <button class="dl-btn btn-csv" id="btn-csv" onclick="download('csv')" disabled>
+        <span class="btn-icon">⬇</span>
+        Download CSV
+      </button>
+      <button class="dl-btn btn-json" id="btn-json" onclick="download('json')" disabled>
+        <span class="btn-icon">⬇</span>
+        Download JSON
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Columns panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Exported Columns</span>
+      <span style="font-size:10px; color:var(--text2);">16 columns · both CSV and JSON</span>
+    </div>
+    <div class="col-list">
+      {% for col in [
+        'alert_id','created_at','rule_id','rule_name','severity',
+        'host','user','summary','status','hit_count','last_hit_at',
+        'attack_technique_id','attack_technique_name','attack_tactic',
+        'snoozed_until','notes'
+      ] %}
+      <span class="col-pill">{{ col }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Usage notes -->
+  <div class="info-box">
+    <strong>CSV</strong> — opens directly in Excel, Google Sheets, or any spreadsheet tool.
+    Best for ad-hoc analysis, sharing with non-technical stakeholders, or building reports.<br>
+    <strong>JSON</strong> — includes filter metadata and a structured <code>alerts</code> array.
+    Best for loading into other tools, scripting, or feeding into a SIEM.
+    The <code>exported_at</code> and <code>filter</code> fields make the file self-documenting.<br>
+    <strong>No row limit</strong> — unlike the dashboard which shows 50 alerts for performance,
+    this page queries the full database. Exports of tens of thousands of rows are fine.
+  </div>
+
+</div>
+
+<script>
+  let _debounce = null;
+
+  function getParams() {
+    return {
+      days:         document.getElementById('f-days').value,
+      severity:     document.getElementById('f-severity').value,
+      status:       document.getElementById('f-status').value,
+      show_snoozed: document.getElementById('f-snoozed').value,
+      host:         document.getElementById('f-host').value,
+      rule:         document.getElementById('f-rule').value,
+    };
+  }
+
+  function buildQS(extra = {}) {
+    const p = { ...getParams(), ...extra };
+    return new URLSearchParams(
+      Object.entries(p).filter(([_, v]) => v !== '' && v !== '0' || _ === 'days' || _ === 'show_snoozed')
+    ).toString();
+  }
+
+  async function updatePreview() {
+    clearTimeout(_debounce);
+    _debounce = setTimeout(async () => {
+      const countEl = document.getElementById('preview-count');
+      const metaEl  = document.getElementById('preview-meta');
+      const btnCsv  = document.getElementById('btn-csv');
+      const btnJson = document.getElementById('btn-json');
+
+      countEl.className = 'preview-count loading';
+      countEl.textContent = '…';
+      metaEl.textContent  = 'Counting…';
+
+      try {
+        const p   = getParams();
+        const qs  = new URLSearchParams(Object.entries(p).filter(([_,v]) => v !== '')).toString();
+        const res = await fetch('/api/alerts/count?' + qs);
+        const d   = await res.json();
+
+        countEl.textContent = d.count.toLocaleString();
+        countEl.className   = 'preview-count' + (d.count === 0 ? ' zero' : '');
+        metaEl.textContent  = d.count === 0
+          ? 'No alerts match these filters'
+          : `${d.count} alert${d.count !== 1 ? 's' : ''} will be exported`;
+
+        btnCsv.disabled  = d.count === 0;
+        btnJson.disabled = d.count === 0;
+      } catch (e) {
+        countEl.textContent = '?';
+        metaEl.textContent  = 'Could not fetch count';
+      }
+    }, 250);
+  }
+
+  function download(fmt) {
+    const p  = getParams();
+    const qs = new URLSearchParams({ fmt, ...Object.fromEntries(Object.entries(p).filter(([_,v]) => v !== '')) });
+    window.location.href = '/alerts/export?' + qs.toString();
+  }
+
+  // Run preview on page load
+  updatePreview();
+</script>
+</body>
+</html>

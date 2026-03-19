@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — {{ hostname }} Timeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --bg2:#0f1318; --bg3:#151a22; --border:#1e2733;
+    --accent:#00d4aa; --accent2:#0099ff; --red:#ff4455; --orange:#ff8800;
+    --yellow:#ffcc00; --muted:#4a5568; --text:#c8d6e5; --text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13px; min-height:100vh; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  }
+
+  /* ── Header ── */
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:0 24px; height:52px; display:flex; align-items:center; gap:16px;
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-family:var(--mono); font-size:15px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; }
+  .logo span { color:var(--text2); }
+  nav { display:flex; gap:4px; margin-left:24px; }
+  nav a {
+    font-family:var(--mono); font-size:11px; color:var(--text2); text-decoration:none;
+    padding:4px 10px; border-radius:3px; border:1px solid transparent; transition:border-color .15s, color .15s;
+  }
+  nav a:hover { border-color:var(--border); color:var(--text); }
+  .back { color:var(--accent2); text-decoration:none; font-size:12px; margin-left:auto; }
+  .back:hover { color:var(--accent); }
+
+  /* ── Layout ── */
+  .page { display:grid; grid-template-columns:220px 1fr; gap:0; min-height:calc(100vh - 52px); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background:var(--bg2); border-right:1px solid var(--border);
+    padding:16px 0; display:flex; flex-direction:column; gap:0;
+    position:sticky; top:52px; height:calc(100vh - 52px); overflow-y:auto;
+  }
+  .sidebar-section { padding:0 14px 14px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+  .sidebar-label { font-size:9px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:8px; }
+
+  /* Host picker */
+  .host-link {
+    display:block; padding:5px 8px; border-radius:3px; font-family:var(--mono);
+    font-size:11px; color:var(--text2); text-decoration:none; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; transition:background .1s, color .1s;
+  }
+  .host-link:hover  { background:var(--bg3); color:var(--text); }
+  .host-link.active { background:rgba(0,212,170,.1); color:var(--accent); border:1px solid rgba(0,212,170,.2); }
+
+  /* Stat pills */
+  .stat-pill {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 0; border-bottom:1px solid rgba(30,39,51,.5);
+    font-size:11px; color:var(--text2);
+  }
+  .stat-pill:last-child { border-bottom:none; }
+  .stat-pill-val { font-family:var(--mono); font-size:13px; }
+
+  /* Filter form */
+  select, input[type="number"] {
+    width:100%; background:var(--bg3); border:1px solid var(--border);
+    color:var(--text); padding:5px 8px; border-radius:3px;
+    font-family:var(--mono); font-size:11px; outline:none; margin-top:4px;
+  }
+  select:focus, input:focus { border-color:var(--accent2); }
+  .apply-btn {
+    width:100%; margin-top:8px; background:var(--accent2); color:#fff;
+    border:none; padding:6px; border-radius:3px; cursor:pointer; font-size:11px;
+  }
+  .apply-btn:hover { background:var(--accent); }
+
+  /* ── Main content ── */
+  .main { padding:24px; overflow-y:auto; }
+
+  /* ── Page header ── */
+  .page-title { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .page-title span { font-family:var(--mono); color:var(--accent); }
+  .page-sub { color:var(--text2); font-size:12px; margin-bottom:20px; }
+
+  /* ── Empty state ── */
+  .empty { padding:60px; text-align:center; color:var(--muted); }
+  .empty-icon { font-size:32px; margin-bottom:12px; }
+
+  /* ── Timeline ── */
+  .timeline { position:relative; padding-left:28px; }
+
+  /* Vertical line */
+  .timeline::before {
+    content:''; position:absolute; left:10px; top:0; bottom:0;
+    width:2px; background:var(--border);
+  }
+
+  /* Day separator */
+  .day-sep {
+    position:relative; margin:20px 0 12px -28px; padding-left:28px;
+  }
+  .day-sep::before {
+    content:''; position:absolute; left:10px; top:50%;
+    width:10px; height:2px; background:var(--border);
+  }
+  .day-label {
+    display:inline-block; font-family:var(--mono); font-size:10px;
+    color:var(--text2); background:var(--bg); padding:2px 8px;
+    border:1px solid var(--border); border-radius:2px; letter-spacing:1px;
+  }
+
+  /* ── EVENT entry (small tick) ── */
+  .tl-event {
+    position:relative; margin-bottom:4px; padding:6px 10px 6px 14px;
+    border-radius:3px; transition:background .1s;
+  }
+  .tl-event:hover { background:rgba(255,255,255,.03); }
+
+  /* dot on the line */
+  .tl-event::before {
+    content:''; position:absolute; left:-22px; top:50%;
+    transform:translateY(-50%);
+    width:6px; height:6px; border-radius:50%; border:2px solid var(--border);
+    background:var(--bg2);
+  }
+  .tl-event.sev-high::before   { border-color:var(--red);    background:rgba(255,68,85,.3); }
+  .tl-event.sev-medium::before { border-color:var(--orange); background:rgba(255,136,0,.3); }
+  .tl-event.sev-low::before    { border-color:var(--yellow); background:rgba(255,204,0,.2); }
+  .tl-event.sev-info::before   { border-color:var(--muted);  background:var(--bg3); }
+
+  .event-meta {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .event-time { font-family:var(--mono); font-size:10px; color:var(--muted); min-width:58px; }
+  .event-type-tag {
+    font-family:var(--mono); font-size:10px;
+    background:var(--bg3); border:1px solid var(--border);
+    color:var(--text2); padding:1px 6px; border-radius:2px;
+  }
+  .sev-tag {
+    font-family:var(--mono); font-size:9px; padding:1px 5px; border-radius:2px;
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .sev-tag.high   { background:rgba(255,68,85,.12);  color:var(--red);    border:1px solid rgba(255,68,85,.3); }
+  .sev-tag.medium { background:rgba(255,136,0,.1);   color:var(--orange); border:1px solid rgba(255,136,0,.3); }
+  .sev-tag.low    { background:rgba(255,204,0,.08);  color:var(--yellow); border:1px solid rgba(255,204,0,.25); }
+  .sev-tag.info   { background:rgba(74,85,104,.2);   color:var(--text2);  border:1px solid rgba(74,85,104,.4); }
+
+  .event-summary { font-size:11px; color:var(--text2); margin-top:2px; }
+
+  /* Expandable fields */
+  .event-fields {
+    display:none; margin-top:6px; padding:8px; background:var(--bg3);
+    border:1px solid var(--border); border-radius:3px;
+    font-family:var(--mono); font-size:10px; color:var(--text2);
+    display:flex; flex-wrap:wrap; gap:6px;
+  }
+  .field-pill {
+    background:var(--bg); border:1px solid var(--border);
+    padding:2px 6px; border-radius:2px; white-space:nowrap;
+  }
+  .field-key { color:var(--muted); }
+  .field-val { color:var(--text); }
+
+  /* ── ALERT entry (prominent card) ── */
+  .tl-alert {
+    position:relative; margin:10px 0; padding:12px 14px;
+    border-radius:4px; text-decoration:none; display:block;
+    transition:transform .1s, box-shadow .1s;
+  }
+  .tl-alert:hover { transform:translateX(2px); box-shadow:0 2px 12px rgba(0,0,0,.4); }
+
+  .tl-alert.high   { background:rgba(255,68,85,.08);  border:1px solid rgba(255,68,85,.3); }
+  .tl-alert.medium { background:rgba(255,136,0,.08);  border:1px solid rgba(255,136,0,.3); }
+  .tl-alert.low    { background:rgba(255,204,0,.06);  border:1px solid rgba(255,204,0,.25); }
+  .tl-alert.info   { background:rgba(74,85,104,.12);  border:1px solid rgba(74,85,104,.3); }
+
+  /* triangle pointer to the timeline line */
+  .tl-alert::before {
+    content:'⚠'; position:absolute; left:-24px; top:50%; transform:translateY(-50%);
+    font-size:12px; line-height:1;
+  }
+  .tl-alert.high::before   { color:var(--red); }
+  .tl-alert.medium::before { color:var(--orange); }
+  .tl-alert.low::before    { color:var(--yellow); }
+  .tl-alert.info::before   { color:var(--text2); }
+
+  .alert-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .alert-time { font-family:var(--mono); font-size:10px; color:var(--muted); }
+  .alert-badge { font-size:9px; text-transform:uppercase; letter-spacing:1px; font-family:var(--mono); padding:2px 7px; border-radius:2px; }
+  .alert-badge.high   { background:rgba(255,68,85,.2);  color:var(--red); }
+  .alert-badge.medium { background:rgba(255,136,0,.15); color:var(--orange); }
+  .alert-badge.low    { background:rgba(255,204,0,.12); color:var(--yellow); }
+  .alert-badge.info   { background:rgba(74,85,104,.2);  color:var(--text2); }
+  .alert-rule { font-size:12px; font-weight:600; color:var(--text); }
+  .alert-summary { font-size:11px; color:var(--text2); margin-top:3px; }
+  .alert-meta-row { display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap; }
+  .alert-status { font-family:var(--mono); font-size:10px; }
+  .status-open          { color:var(--red); }
+  .status-investigating { color:var(--orange); }
+  .status-closed        { color:var(--text2); }
+  .hit-badge {
+    font-family:var(--mono); font-size:9px; padding:1px 5px; border-radius:2px;
+    background:rgba(255,136,0,.15); color:var(--orange); border:1px solid rgba(255,136,0,.3);
+  }
+  .atk-tag {
+    font-family:var(--mono); font-size:9px; padding:1px 5px; border-radius:2px;
+    background:rgba(255,68,85,.08); color:var(--red); border:1px solid rgba(255,68,85,.2);
+  }
+  .investigate-link {
+    margin-left:auto; font-size:11px; color:var(--accent2); text-decoration:none;
+  }
+  .investigate-link:hover { color:var(--accent); }
+
+  /* ── Jump to top ── */
+  #jump-top {
+    position:fixed; bottom:24px; right:24px;
+    background:var(--bg2); border:1px solid var(--border);
+    color:var(--text2); font-size:12px; padding:6px 12px;
+    border-radius:3px; cursor:pointer; font-family:var(--mono);
+    display:none; z-index:50; transition:color .15s, border-color .15s;
+  }
+  #jump-top:hover { color:var(--accent); border-color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/attack-coverage">ATT&amp;CK Coverage</a>
+    <a href="/suppressions">Suppressions</a>
+  </nav>
+  <a href="/" class="back">← Dashboard</a>
+</header>
+
+<div class="page">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+
+    <!-- Current host stats -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">{{ hostname }}</div>
+      <div class="stat-pill">
+        <span>Events</span>
+        <span class="stat-pill-val" style="color:var(--accent2);">{{ stats.total_events }}</span>
+      </div>
+      <div class="stat-pill">
+        <span>Alerts</span>
+        <span class="stat-pill-val" style="color:{% if stats.open_alerts > 0 %}var(--red){% else %}var(--text2){% endif %};">{{ stats.total_alerts }}</span>
+      </div>
+      <div class="stat-pill">
+        <span>Open</span>
+        <span class="stat-pill-val" style="color:var(--red);">{{ stats.open_alerts }}</span>
+      </div>
+      <div class="stat-pill">
+        <span>First seen</span>
+        <span style="font-family:var(--mono); font-size:9px; color:var(--text2);">{{ stats.first_seen }}</span>
+      </div>
+      <div class="stat-pill">
+        <span>Last seen</span>
+        <span style="font-family:var(--mono); font-size:9px; color:var(--text2);">{{ stats.last_seen }}</span>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Filters</div>
+      <form method="GET" action="/host/{{ hostname }}">
+        <div style="margin-bottom:8px;">
+          <div style="font-size:10px; color:var(--text2); margin-bottom:2px;">Time window</div>
+          <select name="days">
+            <option value="1"  {% if days==1  %}selected{% endif %}>Last 24 hours</option>
+            <option value="7"  {% if days==7  %}selected{% endif %}>Last 7 days</option>
+            <option value="30" {% if days==30 %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if days==90 %}selected{% endif %}>Last 90 days</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px; color:var(--text2); margin-bottom:2px;">Event type</div>
+          <select name="event_type">
+            <option value="">All types</option>
+            {% for et in event_types %}
+            <option value="{{ et }}" {% if event_type==et %}selected{% endif %}>{{ et }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="apply-btn">Apply</button>
+      </form>
+    </div>
+
+    <!-- Other hosts -->
+    <div class="sidebar-section" style="border-bottom:none; margin-bottom:0;">
+      <div class="sidebar-label">All Hosts</div>
+      {% for h in all_hosts %}
+      <a href="/host/{{ h.host }}"
+         class="host-link {% if h.host == hostname %}active{% endif %}">
+        {{ h.host }}
+      </a>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- ── Main timeline ── -->
+  <div class="main">
+
+    <div class="page-title">Host: <span>{{ hostname }}</span></div>
+    <div class="page-sub">
+      {{ timeline | length }} entries · last {{ days }} day{% if days != 1 %}s{% endif %}
+      {% if event_type %} · filtered to <strong>{{ event_type }}</strong>{% endif %}
+    </div>
+
+    {% if not timeline %}
+    <div class="empty">
+      <div class="empty-icon">🖥</div>
+      No activity found for <strong>{{ hostname }}</strong><br>
+      in the last {{ days }} day{% if days != 1 %}s{% endif %}.
+      {% if event_type %}<br>Try clearing the event type filter.{% endif %}
+    </div>
+
+    {% else %}
+    <div class="timeline">
+
+    {% set ns = namespace(prev_day='') %}
+    {% for entry in timeline %}
+      {% set day = entry.ts[:10] %}
+
+      {# Day separator #}
+      {% if day != ns.prev_day %}
+      {% set ns.prev_day = day %}
+      <div class="day-sep">
+        <span class="day-label">{{ day }}</span>
+      </div>
+      {% endif %}
+
+      {% if entry.kind == 'alert' %}
+      {# ── ALERT card ── #}
+      {% set a = entry.data %}
+      <a class="tl-alert {{ a.severity }}" href="/alert/{{ a.alert_id }}">
+        <div class="alert-row">
+          <span class="alert-time">{{ a.created_at[11:19] }}</span>
+          <span class="alert-badge {{ a.severity }}">{{ a.severity }}</span>
+          <span class="alert-rule">{{ a.rule_name }}</span>
+          <span class="investigate-link">Investigate →</span>
+        </div>
+        <div class="alert-summary">{{ a.summary }}</div>
+        <div class="alert-meta-row">
+          <span class="alert-status status-{{ a.status }}">● {{ a.status }}</span>
+          {% if a.hit_count and a.hit_count > 1 %}
+          <span class="hit-badge">×{{ a.hit_count }} hits</span>
+          {% endif %}
+          {% if a.attack_tactic %}
+          <span class="atk-tag">{{ a.attack_tactic }}</span>
+          {% endif %}
+          {% if a.attack_technique_id %}
+          <span style="font-family:var(--mono); font-size:9px; color:var(--muted);">{{ a.attack_technique_id }}</span>
+          {% endif %}
+        </div>
+      </a>
+
+      {% else %}
+      {# ── EVENT row ── #}
+      {% set e = entry.data %}
+      <div class="tl-event sev-{{ e.severity }}" onclick="toggleFields(this)">
+        <div class="event-meta">
+          <span class="event-time">{{ e.timestamp[11:19] }}</span>
+          <span class="event-type-tag">{{ e.event_type }}</span>
+          <span class="sev-tag {{ e.severity }}">{{ e.severity }}</span>
+          {% if e.user %}
+          <span style="font-family:var(--mono); font-size:10px; color:var(--accent2);">{{ e.user }}</span>
+          {% endif %}
+          <span style="font-size:10px; color:var(--muted);">{{ e.source }}</span>
+        </div>
+        <div class="event-summary">{{ e.summary }}</div>
+        {% if e.fields and e.fields is mapping and e.fields %}
+        <div class="event-fields" style="display:none;">
+          {% for k, v in e.fields.items() %}
+          {% if v is not none and v != '' %}
+          <span class="field-pill">
+            <span class="field-key">{{ k }}: </span>
+            <span class="field-val">
+              {% if v == true %}true
+              {% elif v == false %}false
+              {% else %}{{ v }}{% endif %}
+            </span>
+          </span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<button id="jump-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Top</button>
+
+<script>
+function toggleFields(el) {
+  const fields = el.querySelector('.event-fields');
+  if (fields) {
+    fields.style.display = fields.style.display === 'none' ? 'flex' : 'none';
+  }
+}
+
+// Show jump-to-top after scrolling
+window.addEventListener('scroll', () => {
+  document.getElementById('jump-top').style.display =
+    window.scrollY > 300 ? 'block' : 'none';
+});
+</script>
+</body>
+</html>

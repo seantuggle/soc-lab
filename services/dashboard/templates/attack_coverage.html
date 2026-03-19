@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — ATT&CK Coverage</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --bg2:#0f1318; --bg3:#151a22; --border:#1e2733;
+    --accent:#00d4aa; --accent2:#0099ff; --red:#ff4455; --orange:#ff8800;
+    --yellow:#ffcc00; --muted:#4a5568; --text:#c8d6e5; --text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+
+    /* severity colours */
+    --sev-high:   #ff4455;
+    --sev-medium: #ff8800;
+    --sev-low:    #ffcc00;
+    --sev-info:   #4a5568;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13px; min-height:100vh; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  }
+
+  /* ── Header ── */
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:0 24px; height:52px; display:flex; align-items:center; gap:16px;
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-family:var(--mono); font-size:15px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; }
+  .logo span { color:var(--text2); }
+  nav { display:flex; gap:4px; margin-left:24px; }
+  nav a {
+    font-family:var(--mono); font-size:11px; color:var(--text2); text-decoration:none;
+    padding:4px 10px; border-radius:3px; border:1px solid transparent; transition:border-color .15s, color .15s;
+  }
+  nav a:hover { border-color:var(--border); color:var(--text); }
+  nav a.active { border-color:var(--accent); color:var(--accent); }
+  .header-right { margin-left:auto; display:flex; gap:16px; align-items:center; }
+  .pulse { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 6px var(--accent); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+  /* ── Layout ── */
+  .content { padding:24px; display:flex; flex-direction:column; gap:24px; max-width:1400px; margin:0 auto; }
+
+  /* ── Page title ── */
+  .page-header { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .page-title { font-size:22px; font-weight:600; }
+  .page-sub { color:var(--text2); font-size:12px; margin-top:4px; }
+
+  /* ── Stats row ── */
+  .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .stat-card {
+    background:var(--bg2); border:1px solid var(--border); border-radius:4px;
+    padding:14px 16px; position:relative; overflow:hidden;
+  }
+  .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+  .stat-card.green::before  { background:var(--accent); }
+  .stat-card.red::before    { background:var(--red); }
+  .stat-card.blue::before   { background:var(--accent2); }
+  .stat-card.orange::before { background:var(--orange); }
+  .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text2); margin-bottom:6px; }
+  .stat-value { font-family:var(--mono); font-size:28px; line-height:1; }
+  .stat-card.green  .stat-value { color:var(--accent); }
+  .stat-card.red    .stat-value { color:var(--red); }
+  .stat-card.blue   .stat-value { color:var(--accent2); }
+  .stat-card.orange .stat-value { color:var(--orange); }
+  .stat-sub { color:var(--text2); font-size:11px; margin-top:5px; }
+
+  /* ── Coverage bar ── */
+  .coverage-bar-wrap {
+    background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:14px 16px;
+  }
+  .coverage-bar-label { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text2); margin-bottom:8px; display:flex; justify-content:space-between; }
+  .coverage-bar-track { height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+  .coverage-bar-fill  { height:100%; border-radius:4px; background:linear-gradient(90deg, var(--accent), var(--accent2)); transition:width .6s ease; }
+
+  /* ── Legend ── */
+  .legend { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text2); }
+  .legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+  /* ── Matrix ── */
+  .matrix-wrap { overflow-x:auto; }
+  .matrix {
+    display:grid;
+    grid-template-columns: repeat({{ tactics | length }}, minmax(160px, 1fr));
+    gap:8px;
+    min-width: {{ tactics | length * 168 }}px;
+  }
+
+  /* Tactic column */
+  .tactic-col { display:flex; flex-direction:column; gap:6px; }
+
+  /* Tactic header */
+  .tactic-header {
+    background:var(--bg3); border:1px solid var(--border); border-radius:4px;
+    padding:8px 10px; text-align:center;
+  }
+  .tactic-name {
+    font-size:10px; text-transform:uppercase; letter-spacing:1px;
+    font-weight:600; line-height:1.3;
+  }
+  .tactic-header.covered   .tactic-name { color:var(--accent); }
+  .tactic-header.uncovered .tactic-name { color:var(--muted); }
+  .tactic-count { font-family:var(--mono); font-size:9px; color:var(--text2); margin-top:3px; }
+
+  /* Technique cells */
+  .technique-cell {
+    border-radius:4px; padding:9px 10px; cursor:pointer;
+    transition:transform .1s, box-shadow .1s; position:relative;
+    text-decoration:none; display:block;
+  }
+  .technique-cell:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.4); }
+
+  /* Covered cell — colour by severity */
+  .cell-high   { background:rgba(255,68,85,.12);  border:1px solid rgba(255,68,85,.35); }
+  .cell-medium { background:rgba(255,136,0,.10);  border:1px solid rgba(255,136,0,.35); }
+  .cell-low    { background:rgba(255,204,0,.08);  border:1px solid rgba(255,204,0,.3); }
+  .cell-info   { background:rgba(0,212,170,.08);  border:1px solid rgba(0,212,170,.25); }
+
+  .cell-high:hover   { background:rgba(255,68,85,.2); }
+  .cell-medium:hover { background:rgba(255,136,0,.2); }
+  .cell-low:hover    { background:rgba(255,204,0,.16); }
+  .cell-info:hover   { background:rgba(0,212,170,.16); }
+
+  /* Uncovered cell */
+  .cell-uncovered {
+    background:rgba(255,255,255,.02); border:1px dashed rgba(255,255,255,.07);
+    cursor:default;
+  }
+
+  .cell-tid {
+    font-family:var(--mono); font-size:9px; letter-spacing:.5px; margin-bottom:3px;
+  }
+  .cell-high   .cell-tid { color:var(--red); }
+  .cell-medium .cell-tid { color:var(--orange); }
+  .cell-low    .cell-tid { color:var(--yellow); }
+  .cell-info   .cell-tid { color:var(--accent); }
+  .cell-uncovered .cell-tid { color:var(--muted); }
+
+  .cell-name {
+    font-size:10px; font-weight:500; line-height:1.3; color:var(--text);
+  }
+  .cell-uncovered .cell-name { color:var(--muted); font-weight:400; }
+
+  .cell-rule-name { font-size:9px; color:var(--text2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Alert count badge */
+  .cell-badge {
+    position:absolute; top:6px; right:6px;
+    font-family:var(--mono); font-size:9px; font-weight:600;
+    padding:1px 5px; border-radius:10px;
+  }
+  .cell-high   .cell-badge { background:rgba(255,68,85,.3);  color:var(--red); }
+  .cell-medium .cell-badge { background:rgba(255,136,0,.25); color:var(--orange); }
+  .cell-low    .cell-badge { background:rgba(255,204,0,.2);  color:var(--yellow); }
+  .cell-info   .cell-badge { background:rgba(0,212,170,.2);  color:var(--accent); }
+
+  /* Last seen dot */
+  .cell-last-seen { font-size:9px; color:var(--text2); margin-top:4px; font-family:var(--mono); }
+
+  /* ── Info panel (no rules without attack) ── */
+  .info-box {
+    background:rgba(0,153,255,.06); border:1px solid rgba(0,153,255,.2);
+    border-radius:4px; padding:14px 18px; font-size:12px; color:var(--text2); line-height:1.7;
+  }
+  .info-box strong { color:var(--text); }
+
+  /* ── Uncovered tactics list ── */
+  .blind-spot-list { display:flex; flex-wrap:wrap; gap:8px; }
+  .blind-spot-tag {
+    font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:1px;
+    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.1);
+    color:var(--muted); padding:4px 10px; border-radius:3px;
+  }
+
+  /* ── Panel ── */
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .panel-header {
+    padding:10px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; background:var(--bg3);
+  }
+  .panel-title { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--text2); font-weight:500; }
+  .panel-body { padding:16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/attack-coverage" class="active">ATT&amp;CK Coverage</a>
+    <a href="/suppressions">Suppressions</a>
+  </nav>
+  <div class="header-right">
+    <div class="pulse"></div>
+  </div>
+</header>
+
+<div class="content">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">MITRE ATT&amp;CK Coverage Matrix</div>
+      <div class="page-sub">
+        Detection rules mapped to ATT&amp;CK tactics and techniques.
+        Alert counts reflect the last 30 days.
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,68,85,.5); border:1px solid var(--red);"></div> High severity rule</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,136,0,.4); border:1px solid var(--orange);"></div> Medium</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,204,0,.3); border:1px solid var(--yellow);"></div> Low</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(0,212,170,.2); border:1px solid var(--accent);"></div> Info</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.1);"></div> No coverage</div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card green">
+      <div class="stat-label">Tactics Covered</div>
+      <div class="stat-value">{{ covered_tactics }}</div>
+      <div class="stat-sub">of {{ total_tactics }} ATT&amp;CK tactics</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Blind Spots</div>
+      <div class="stat-value">{{ total_tactics - covered_tactics }}</div>
+      <div class="stat-sub">tactics with no detection</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Techniques Mapped</div>
+      <div class="stat-value">{{ total_techniques }}</div>
+      <div class="stat-sub">detection rules with ATT&amp;CK tags</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-label">Alerts (30d)</div>
+      <div class="stat-value">{{ total_alert_count }}</div>
+      <div class="stat-sub">across all mapped techniques</div>
+    </div>
+  </div>
+
+  <!-- Coverage progress bar -->
+  <div class="coverage-bar-wrap">
+    {% set pct = ((covered_tactics / total_tactics) * 100) | int %}
+    <div class="coverage-bar-label">
+      <span>Tactic Coverage</span>
+      <span style="font-family:var(--mono); color:var(--accent);">{{ pct }}%</span>
+    </div>
+    <div class="coverage-bar-track">
+      <div class="coverage-bar-fill" style="width:{{ pct }}%;"></div>
+    </div>
+  </div>
+
+  <!-- Matrix -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Detection Coverage by Tactic</span>
+      <span style="font-size:10px; color:var(--text2);">Click a covered cell to view alerts for that technique</span>
+    </div>
+    <div class="panel-body" style="padding:16px; overflow-x:auto;">
+      <div class="matrix">
+
+        {% for tactic in tactics %}
+        {% set cells = tactic_map.get(tactic, []) %}
+        {% set is_covered = cells | length > 0 %}
+        <div class="tactic-col">
+
+          <!-- Tactic header -->
+          <div class="tactic-header {% if is_covered %}covered{% else %}uncovered{% endif %}">
+            <div class="tactic-name">{{ tactic }}</div>
+            <div class="tactic-count">
+              {% if is_covered %}
+                {{ cells | length }} rule{% if cells | length != 1 %}s{% endif %}
+              {% else %}
+                no coverage
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Technique cells -->
+          {% for cell in cells %}
+          {% if cell.url %}
+          <a class="technique-cell cell-{{ cell.severity }}"
+             href="{{ cell.url }}" target="_blank" rel="noopener"
+             title="{{ cell.rule_name }} — {{ cell.technique_name }}&#10;Click to open ATT&amp;CK page">
+          {% else %}
+          <div class="technique-cell cell-{{ cell.severity }}">
+          {% endif %}
+
+            {% if cell.alert_count > 0 %}
+            <span class="cell-badge">{{ cell.alert_count }}</span>
+            {% endif %}
+
+            <div class="cell-tid">{{ cell.technique_id }}</div>
+            <div class="cell-name">{{ cell.technique_name }}</div>
+            <div class="cell-rule-name">{{ cell.rule_id }}: {{ cell.rule_name }}</div>
+            {% if cell.last_seen %}
+            <div class="cell-last-seen">last: {{ cell.last_seen[:10] }}</div>
+            {% endif %}
+
+          {% if cell.url %}
+          </a>
+          {% else %}
+          </div>
+          {% endif %}
+          {% endfor %}
+
+          <!-- Empty placeholder if no cells -->
+          {% if not cells %}
+          <div class="technique-cell cell-uncovered">
+            <div class="cell-tid">—</div>
+            <div class="cell-name" style="font-size:9px;">No rule mapped</div>
+          </div>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Blind spots -->
+  {% if uncovered_tactics %}
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">⚠ Blind Spots — Tactics with No Detection Coverage</span>
+      <span style="font-size:10px; color:var(--red);">{{ uncovered_tactics | list | length }} tactics</span>
+    </div>
+    <div class="panel-body">
+      <div class="blind-spot-list">
+        {% for tactic in tactics %}
+          {% if tactic in uncovered_tactics %}
+          <span class="blind-spot-tag">{{ tactic }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div style="margin-top:12px; font-size:11px; color:var(--text2); line-height:1.7;">
+        These tactics have no detection rules. Consider adding rules or importing Sigma community rules
+        to improve coverage. Each blind spot is a phase of an attack that would go undetected in this lab.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Rules without ATT&CK tags -->
+  {% if rules_without_attack %}
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Rules Missing ATT&amp;CK Tags</span>
+      <span style="font-size:10px; color:var(--orange);">{{ rules_without_attack | length }}</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      {% for rule in rules_without_attack %}
+      <div style="display:flex; align-items:center; gap:12px; padding:8px 16px; border-bottom:1px solid rgba(30,39,51,.6);">
+        <span style="font-family:var(--mono); font-size:11px; color:var(--accent2);">{{ rule.id }}</span>
+        <span style="font-size:12px;">{{ rule.name }}</span>
+        <span style="font-size:10px; color:var(--muted);">Add an <code>attack:</code> block to this rule's YAML to include it in the matrix.</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- How to improve coverage -->
+  <div class="info-box">
+    <strong>Improving your coverage:</strong>
+    Each blind spot is a tactic where an attacker could operate undetected.
+    To add coverage, create a new rule in the <code>rules/</code> directory with an <code>attack:</code> block
+    specifying the technique ID, name, tactic, and ATT&amp;CK URL.
+    After saving, hit <code>POST http://localhost:8002/reload-rules</code> to pick it up without restarting.
+    The matrix updates on every page load — no rebuild needed.
+  </div>
+
+</div>
+</body>
+</html>

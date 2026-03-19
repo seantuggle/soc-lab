@@ -11,11 +11,17 @@ Routes:
   GET  /suppressions              — suppression management page
   POST /suppressions/create       — create suppression from alert context
   POST /suppressions/delete       — delete a suppression by id
+  GET  /attack-coverage           — MITRE ATT&CK coverage matrix
+  GET  /host/{hostname}           — host timeline view
+  GET  /api/hosts                 — JSON list of known hosts
+  GET  /alerts/export             — download alerts as CSV or JSON
+  GET  /alerts/export-ui          — full export page with filters + preview
+  GET  /api/alerts/count          — JSON count preview for export page
   GET  /events                    — HTMX partial: recent events
   GET  /api/stats                 — JSON stats for dashboard widgets
 """
 from __future__ import annotations
-import os, sys, json, logging
+import os, sys, json, logging, csv, io
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -24,7 +30,7 @@ sys.path.insert(0, "/app")
 import yaml
 import uvicorn
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -352,6 +358,372 @@ async def suppressions_page(request: Request):
         "suppressions": all_suppressions,
         "now":          now,
         "active_count": sum(1 for s in all_suppressions if s["is_active"]),
+    })
+
+
+# ── ATT&CK Coverage Matrix ────────────────────────────────────────────────────
+
+# The 14 ATT&CK tactics in kill-chain order
+ATTACK_TACTICS = [
+    "Reconnaissance",
+    "Resource Development",
+    "Initial Access",
+    "Execution",
+    "Persistence",
+    "Privilege Escalation",
+    "Defense Evasion",
+    "Credential Access",
+    "Discovery",
+    "Lateral Movement",
+    "Collection",
+    "Command and Control",
+    "Exfiltration",
+    "Impact",
+]
+
+
+def _load_all_rules() -> list[dict]:
+    """Load every rule from every YAML file in RULES_DIR."""
+    rules_dir = Path(os.environ.get("RULES_DIR", "/app/rules"))
+    all_rules = []
+    for p in sorted(rules_dir.glob("*.yml")):
+        try:
+            data = yaml.safe_load(p.read_text())
+            if not isinstance(data, list):
+                data = [data]
+            for rule in data:
+                if isinstance(rule, dict):
+                    all_rules.append(rule)
+        except Exception as exc:
+            log.warning("Could not load %s: %s", p, exc)
+    return all_rules
+
+
+@app.get("/attack-coverage", response_class=HTMLResponse)
+async def attack_coverage(request: Request):
+    rules = _load_all_rules()
+
+    # Pull alert counts per rule from DB (last 30 days)
+    alert_rows = _q(
+        "SELECT rule_id, COUNT(*) as cnt, MAX(created_at) as last_seen "
+        "FROM alerts WHERE created_at > datetime('now','-30 days') "
+        "GROUP BY rule_id"
+    )
+    alert_counts = {r["rule_id"]: r for r in alert_rows}
+
+    # Build per-tactic buckets
+    # tactic_map: tactic → list of technique dicts
+    tactic_map: dict[str, list[dict]] = {t: [] for t in ATTACK_TACTICS}
+    uncovered_tactics: set[str] = set(ATTACK_TACTICS)
+
+    rules_with_attack = 0
+    rules_without_attack = []
+
+    for rule in rules:
+        atk = rule.get("attack")
+        if not atk:
+            rules_without_attack.append(rule)
+            continue
+
+        rules_with_attack += 1
+        tactic = atk.get("tactic", "Unknown")
+        counts = alert_counts.get(rule["id"], {})
+
+        cell = {
+            "rule_id":        rule["id"],
+            "rule_name":      rule["name"],
+            "technique_id":   atk.get("technique_id", ""),
+            "technique_name": atk.get("technique_name", ""),
+            "tactic":         tactic,
+            "url":            atk.get("url", ""),
+            "severity":       rule.get("severity", "info"),
+            "alert_count":    counts.get("cnt", 0),
+            "last_seen":      counts.get("last_seen", None),
+            "tags":           rule.get("tags", []),
+        }
+
+        if tactic in tactic_map:
+            tactic_map[tactic].append(cell)
+            uncovered_tactics.discard(tactic)
+        else:
+            # Unknown tactic — don't silently drop it
+            if tactic not in tactic_map:
+                tactic_map[tactic] = []
+            tactic_map[tactic].append(cell)
+
+    # Coverage stats
+    covered_tactics   = len(ATTACK_TACTICS) - len(uncovered_tactics)
+    total_alert_count = sum(r.get("cnt", 0) for r in alert_rows)
+    total_techniques  = rules_with_attack
+
+    return templates.TemplateResponse("attack_coverage.html", {
+        "request":             request,
+        "tactic_map":          tactic_map,
+        "tactics":             ATTACK_TACTICS,
+        "uncovered_tactics":   uncovered_tactics,
+        "covered_tactics":     covered_tactics,
+        "total_tactics":       len(ATTACK_TACTICS),
+        "total_techniques":    total_techniques,
+        "total_alert_count":   total_alert_count,
+        "rules_without_attack": rules_without_attack,
+    })
+
+
+# ── Host Timeline ─────────────────────────────────────────────────────────────
+
+@app.get("/api/hosts")
+async def list_hosts():
+    """Return all known hosts sorted by most recent activity."""
+    rows = _q(
+        "SELECT host, COUNT(*) as event_count, MAX(timestamp) as last_seen "
+        "FROM normalized_events GROUP BY host ORDER BY last_seen DESC"
+    )
+    return {"hosts": rows}
+
+
+@app.get("/host/{hostname}", response_class=HTMLResponse)
+async def host_timeline(
+    request: Request,
+    hostname: str,
+    days: int = 7,
+    event_type: str = "",
+):
+    since = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+
+    # All events for this host in the window
+    if event_type:
+        events = _q(
+            "SELECT * FROM normalized_events WHERE host=? AND timestamp >= ? "
+            "AND event_type=? ORDER BY timestamp ASC",
+            hostname, since, event_type,
+        )
+    else:
+        events = _q(
+            "SELECT * FROM normalized_events WHERE host=? AND timestamp >= ? "
+            "ORDER BY timestamp ASC",
+            hostname, since,
+        )
+
+    # Parse fields JSON for each event
+    for e in events:
+        if isinstance(e.get("fields"), str):
+            try:
+                e["fields"] = json.loads(e["fields"])
+            except Exception:
+                e["fields"] = {}
+
+    # All alerts for this host in the window
+    alerts = _q(
+        "SELECT * FROM alerts WHERE host=? AND created_at >= ? "
+        "ORDER BY created_at ASC",
+        hostname, since,
+    )
+
+    # Merge into a single timeline list
+    # Each entry: {kind: "event"|"alert", ts: str, data: dict}
+    timeline = []
+    for e in events:
+        timeline.append({
+            "kind": "event",
+            "ts":   e["timestamp"],
+            "data": e,
+        })
+    for a in alerts:
+        timeline.append({
+            "kind": "alert",
+            "ts":   a["created_at"],
+            "data": a,
+        })
+    timeline.sort(key=lambda x: x["ts"])
+
+    # Distinct event types for the filter dropdown
+    event_types = _q(
+        "SELECT DISTINCT event_type FROM normalized_events WHERE host=? "
+        "AND timestamp >= ? ORDER BY event_type",
+        hostname, since,
+    )
+
+    # Host summary stats
+    stats = {
+        "total_events": len(events),
+        "total_alerts": len(alerts),
+        "open_alerts":  sum(1 for a in alerts if a["status"] == "open"),
+        "first_seen":   timeline[0]["ts"][:19].replace("T", " ") if timeline else "—",
+        "last_seen":    timeline[-1]["ts"][:19].replace("T", " ") if timeline else "—",
+    }
+
+    # All hosts for the host picker
+    all_hosts = _q(
+        "SELECT host, MAX(timestamp) as last_seen FROM normalized_events "
+        "GROUP BY host ORDER BY last_seen DESC LIMIT 30"
+    )
+
+    return templates.TemplateResponse("host_timeline.html", {
+        "request":     request,
+        "hostname":    hostname,
+        "timeline":    timeline,
+        "stats":       stats,
+        "days":        days,
+        "event_type":  event_type,
+        "event_types": [r["event_type"] for r in event_types],
+        "all_hosts":   all_hosts,
+    })
+
+
+# ── Alert Export ──────────────────────────────────────────────────────────────
+
+# Columns included in every export
+EXPORT_COLUMNS = [
+    "alert_id", "created_at", "rule_id", "rule_name", "severity",
+    "host", "user", "summary", "status", "hit_count", "last_hit_at",
+    "attack_technique_id", "attack_technique_name", "attack_tactic",
+    "snoozed_until", "notes",
+]
+
+
+@app.get("/alerts/export")
+async def export_alerts(
+    fmt:          str = "csv",   # "csv" or "json"
+    severity:     str = "",
+    status:       str = "",
+    host:         str = "",
+    rule:         str = "",
+    show_snoozed: int = 0,
+    days:         int = 0,       # 0 = all time, otherwise restrict to last N days
+):
+    """
+    Export alerts as CSV or JSON — no row limit.
+    Called by both the dashboard quick-export buttons and the export UI page.
+    """
+    now = _now()
+
+    clauses, params = [], []
+
+    # Date window
+    if days > 0:
+        since = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+        clauses.append("created_at >= ?")
+        params.append(since)
+
+    if not show_snoozed:
+        clauses.append("(snoozed_until IS NULL OR snoozed_until <= ?)")
+        params.append(now)
+    if severity:
+        clauses.append("severity = ?")
+        params.append(severity)
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if host:
+        clauses.append("LOWER(host) LIKE ?")
+        params.append(f"%{host.lower()}%")
+    if rule:
+        clauses.append("LOWER(rule_name) LIKE ?")
+        params.append(f"%{rule.lower()}%")
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql   = f"SELECT * FROM alerts {where} ORDER BY created_at DESC"
+    rows  = _q(sql, *params)
+
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    # ── CSV ───────────────────────────────────────────────────────────
+    if fmt == "csv":
+        buf = io.StringIO()
+        writer = csv.DictWriter(
+            buf, fieldnames=EXPORT_COLUMNS,
+            extrasaction="ignore", lineterminator="\n",
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({col: row.get(col, "") or "" for col in EXPORT_COLUMNS})
+        buf.seek(0)
+        filename = f"soc_alerts_{ts}.csv"
+        return StreamingResponse(
+            iter([buf.getvalue()]), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # ── JSON ──────────────────────────────────────────────────────────
+    else:
+        export = {
+            "exported_at": now,
+            "filter": {
+                "days":         days or "all",
+                "severity":     severity or "all",
+                "status":       status   or "all",
+                "host":         host     or "all",
+                "rule":         rule     or "all",
+                "show_snoozed": bool(show_snoozed),
+            },
+            "count":  len(rows),
+            "alerts": [{col: row.get(col) for col in EXPORT_COLUMNS} for row in rows],
+        }
+        content  = json.dumps(export, indent=2, default=str)
+        filename = f"soc_alerts_{ts}.json"
+        return StreamingResponse(
+            iter([content]), media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+
+@app.get("/api/alerts/count")
+async def alerts_count(
+    severity:     str = "",
+    status:       str = "",
+    host:         str = "",
+    rule:         str = "",
+    show_snoozed: int = 0,
+    days:         int = 0,
+):
+    """Live count used by the export UI preview — fast, no data transfer."""
+    now = _now()
+    clauses, params = [], []
+
+    if days > 0:
+        since = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+        clauses.append("created_at >= ?")
+        params.append(since)
+    if not show_snoozed:
+        clauses.append("(snoozed_until IS NULL OR snoozed_until <= ?)")
+        params.append(now)
+    if severity:
+        clauses.append("severity = ?"); params.append(severity)
+    if status:
+        clauses.append("status = ?");   params.append(status)
+    if host:
+        clauses.append("LOWER(host) LIKE ?"); params.append(f"%{host.lower()}%")
+    if rule:
+        clauses.append("LOWER(rule_name) LIKE ?"); params.append(f"%{rule.lower()}%")
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    con   = get_db(DB_PATH)
+    count = con.execute(f"SELECT COUNT(*) FROM alerts {where}", params).fetchone()[0]
+    con.close()
+    return {"count": count}
+
+
+@app.get("/alerts/export-ui", response_class=HTMLResponse)
+async def export_ui(request: Request):
+    """Dedicated export page — no row limit, full filter control, live preview."""
+    # Populate host dropdown from DB
+    hosts = _q(
+        "SELECT DISTINCT host FROM alerts ORDER BY host"
+    )
+    # Populate rule dropdown
+    rules = _q(
+        "SELECT DISTINCT rule_name FROM alerts ORDER BY rule_name"
+    )
+    # Total alert count for context
+    total = _qone("SELECT COUNT(*) as cnt FROM alerts")
+    oldest = _qone("SELECT MIN(created_at) as ts FROM alerts")
+
+    return templates.TemplateResponse("export_ui.html", {
+        "request": request,
+        "hosts":   [r["host"] for r in hosts],
+        "rules":   [r["rule_name"] for r in rules],
+        "total":   total["cnt"] if total else 0,
+        "oldest":  oldest["ts"][:10] if oldest and oldest["ts"] else "—",
     })
 
 
