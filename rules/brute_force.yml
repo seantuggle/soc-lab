@@ -9,6 +9,11 @@
     Threshold: 5 failures in 60 seconds. A classic brute-force indicator.
   severity: high
   tags: [brute-force, authentication, lateral-movement]
+  attack:
+    technique_id:   T1110.001
+    technique_name: Password Guessing
+    tactic:         Credential Access
+    url:            https://attack.mitre.org/techniques/T1110/001/
   window:
     field: fields.src_ip
     event_type: auth_fail
@@ -34,6 +39,11 @@
   fail_threshold: 3
   window_seconds: 300
   tags: [credential-stuffing, authentication]
+  attack:
+    technique_id:   T1110.004
+    technique_name: Credential Stuffing
+    tactic:         Credential Access
+    url:            https://attack.mitre.org/techniques/T1110/004/
   false_positive_notes: >
     A user who mistyped their password several times then logged in correctly
     will trigger this. Review the username and IP context.
@@ -56,4 +66,9 @@
     count: 10
     seconds: 120
   tags: [brute-force, account-targeted]
+  attack:
+    technique_id:   T1110.003
+    technique_name: Password Spraying
+    tactic:         Credential Access
+    url:            https://attack.mitre.org/techniques/T1110/003/
   false_positive_notes: A user who forgot their password may trigger this.

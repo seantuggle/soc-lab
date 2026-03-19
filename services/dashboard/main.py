@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, "/app")
 
+import yaml
 import uvicorn
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -63,6 +64,33 @@ def _qone(sql: str, *params) -> dict | None:
 
 def _now() -> str:
     return datetime.utcnow().isoformat() + "Z"
+
+
+# ── Rule metadata cache ───────────────────────────────────────────────────────
+
+_rule_cache: dict[str, dict] = {}   # rule_id → full rule dict
+
+def _get_rule_meta(rule_id: str) -> dict:
+    """
+    Return the full rule dict for a given rule_id, loaded from YAML.
+    Results are cached in-process. Returns {} if rule not found.
+    """
+    if rule_id in _rule_cache:
+        return _rule_cache[rule_id]
+
+    rules_dir = Path(os.environ.get("RULES_DIR", "/app/rules"))
+    for p in rules_dir.glob("*.yml"):
+        try:
+            data = yaml.safe_load(p.read_text())
+            if not isinstance(data, list):
+                data = [data]
+            for rule in data:
+                if isinstance(rule, dict):
+                    _rule_cache[rule.get("id", "")] = rule
+        except Exception:
+            pass
+
+    return _rule_cache.get(rule_id, {})
 
 
 # ── API: stats ────────────────────────────────────────────────────────────────
@@ -192,6 +220,8 @@ async def investigate(request: Request, alert_id: str):
 
     is_snoozed = bool(alert.get("snoozed_until") and alert["snoozed_until"] > now)
 
+    rule_meta = _get_rule_meta(alert["rule_id"])
+
     return templates.TemplateResponse("investigate.html", {
         "request":             request,
         "alert":               alert,
@@ -202,6 +232,7 @@ async def investigate(request: Request, alert_id: str):
         "active_suppressions": active_suppressions,
         "is_snoozed":          is_snoozed,
         "now":                 now,
+        "rule_meta":           rule_meta,
     })
 
 

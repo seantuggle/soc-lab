@@ -46,8 +46,10 @@ services:
       - "8080:8080"
     volumes:
       - ./db:/app/db
+      - ./rules:/app/rules
     environment:
       - DB_PATH=/app/db/soc.db
+      - RULES_DIR=/app/rules
       - LOG_LEVEL=INFO
     depends_on:
       ingestion:
@@ -62,4 +64,4 @@ services:
     depends_on:
       ingestion:
         condition: service_healthy
-    command: ["python", "generate_events.py", "--scenario", "all", "--loop", "--interval", "3"]
+    command: ["--scenario", "all", "--loop", "--interval", "3"]

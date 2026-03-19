@@ -285,11 +285,14 @@ def _write_alert(con, rule: dict, event: NormalizedEvent, matched_on: list[str])
     alert_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat() + "Z"
 
+    attack = rule.get("attack", {})
+
     con.execute("""
         INSERT OR IGNORE INTO alerts
             (alert_id, created_at, rule_id, rule_name, severity,
-             event_id, host, user, summary, status, hit_count, last_hit_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             event_id, host, user, summary, status, hit_count, last_hit_at,
+             attack_technique_id, attack_technique_name, attack_tactic)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         alert_id, now,
         rule["id"], rule["name"],
@@ -298,6 +301,9 @@ def _write_alert(con, rule: dict, event: NormalizedEvent, matched_on: list[str])
         f"[{rule['name']}] {event.summary}",
         "open",
         1, now,
+        attack.get("technique_id"),
+        attack.get("technique_name"),
+        attack.get("tactic"),
     ))
 
     con.execute("""

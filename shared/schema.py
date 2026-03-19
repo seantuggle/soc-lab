@@ -124,6 +124,9 @@ def init_db(path: str = DB_PATH):
         snoozed_until TEXT,
         hit_count     INTEGER NOT NULL DEFAULT 1,
         last_hit_at   TEXT,
+        attack_technique_id   TEXT,
+        attack_technique_name TEXT,
+        attack_tactic         TEXT,
         FOREIGN KEY (event_id) REFERENCES normalized_events(event_id)
     );
 
@@ -191,6 +194,10 @@ def migrate_db(path: str = DB_PATH):
         # Feature: deduplication counters
         "ALTER TABLE alerts ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE alerts ADD COLUMN last_hit_at TEXT",
+        # Feature: ATT&CK tagging
+        "ALTER TABLE alerts ADD COLUMN attack_technique_id TEXT",
+        "ALTER TABLE alerts ADD COLUMN attack_technique_name TEXT",
+        "ALTER TABLE alerts ADD COLUMN attack_tactic TEXT",
         # Feature: append-only notes history
         """CREATE TABLE IF NOT EXISTS alert_notes (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

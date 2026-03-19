@@ -451,7 +451,19 @@
               <td>
                 <span class="sev sev-{{ a.severity }}">{{ a.severity }}</span>
               </td>
-              <td class="truncate" style="max-width:180px; font-size:11px;">{{ a.rule_name }}</td>
+              <td class="truncate" style="max-width:180px; font-size:11px;">
+                {{ a.rule_name }}
+                {% if a.attack_tactic %}
+                <div style="margin-top:3px;">
+                  <span style="font-family:var(--mono); font-size:9px; background:rgba(255,68,85,.08); border:1px solid rgba(255,68,85,.2); color:var(--red); padding:1px 5px; border-radius:2px;">
+                    {{ a.attack_tactic }}
+                  </span>
+                  {% if a.attack_technique_id %}
+                  <span style="font-family:var(--mono); font-size:9px; color:var(--muted); margin-left:3px;">{{ a.attack_technique_id }}</span>
+                  {% endif %}
+                </div>
+                {% endif %}
+              </td>
               <td class="mono-sm">{{ a.host }}</td>
               <td class="status-{{ a.status }} mono-sm">{{ a.status }}</td>
               <td>

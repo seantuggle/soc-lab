@@ -1,4 +1,4 @@
-# rules/dns_and_network.yml
+# rules/network_and_identity.yml
 # ──────────────────────────────────────────────────────────────────────────────
 
 - id: DNS001
@@ -12,6 +12,11 @@
     event_type: dns_suspicious
     fields.suspicious_tld: "true"
   tags: [dns, c2, exfiltration]
+  attack:
+    technique_id:   T1071.004
+    technique_name: DNS
+    tactic:         Command and Control
+    url:            https://attack.mitre.org/techniques/T1071/004/
   false_positive_notes: >
     Legitimate services sometimes use non-standard TLDs. Check if the
     domain resolves to a known CDN or business service.
@@ -34,13 +39,14 @@
     count: 20
     seconds: 60
   tags: [dns-tunneling, exfiltration, c2]
+  attack:
+    technique_id:   T1048.001
+    technique_name: Exfiltration Over DNS
+    tactic:         Exfiltration
+    url:            https://attack.mitre.org/techniques/T1048/001/
   false_positive_notes: >
     High DNS volume is normal for DNS resolvers, load balancers, and
     some monitoring agents. Tune the count threshold for your environment.
-
-
-# rules/user_management.yml
-# ──────────────────────────────────────────────────────────────────────────────
 
 - id: USR001
   name: New User Account Created
@@ -52,6 +58,11 @@
   match:
     event_type: user_created
   tags: [persistence, user-management, account-creation]
+  attack:
+    technique_id:   T1136.001
+    technique_name: Local Account
+    tactic:         Persistence
+    url:            https://attack.mitre.org/techniques/T1136/001/
   false_positive_notes: >
     Normal during on-boarding or server provisioning. Correlate with
     change tickets or CM tools (Ansible, Terraform). Unexpected hosts
@@ -61,10 +72,6 @@
     2. Check if there's a change ticket or automation job for this.
     3. Review who was logged into the host at the time.
     4. If unexpected: disable the account and investigate.
-
-
-# rules/web_attacks.yml
-# ──────────────────────────────────────────────────────────────────────────────
 
 - id: WEB001
   name: Excessive 401/403 Responses (Auth Probing)
@@ -78,6 +85,11 @@
     count: 10
     seconds: 60
   tags: [web, authentication, probing]
+  attack:
+    technique_id:   T1078
+    technique_name: Valid Accounts
+    tactic:         Defense Evasion
+    url:            https://attack.mitre.org/techniques/T1078/
   false_positive_notes: Misconfigured API clients frequently generate 401s.
 
 - id: WEB002
@@ -92,10 +104,11 @@
     count: 15
     seconds: 30
   tags: [web, scanning, reconnaissance]
-
-
-# rules/impossible_travel.yml
-# ──────────────────────────────────────────────────────────────────────────────
+  attack:
+    technique_id:   T1595.003
+    technique_name: Wordlist Scanning
+    tactic:         Reconnaissance
+    url:            https://attack.mitre.org/techniques/T1595/003/
 
 - id: TRAVEL001
   name: Impossible Travel Detected
@@ -108,6 +121,11 @@
   match:
     event_type: impossible_travel
   tags: [impossible-travel, account-compromise, identity]
+  attack:
+    technique_id:   T1078.004
+    technique_name: Cloud Accounts
+    tactic:         Defense Evasion
+    url:            https://attack.mitre.org/techniques/T1078/004/
   false_positive_notes: >
     VPN users, cloud shell users, and proxy users may trigger this.
     Users who travel legitimately won't trigger the simulated version,

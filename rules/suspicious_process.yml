@@ -13,6 +13,11 @@
     event_type: process_start
     fields.command_line: ~(?i)(encodedcommand|downloadstring|iex\s|invoke-expression|bypass|hidden|-nop|webclient|downloadfile|base64)
   tags: [powershell, lolbas, execution]
+  attack:
+    technique_id:   T1059.001
+    technique_name: PowerShell
+    tactic:         Execution
+    url:            https://attack.mitre.org/techniques/T1059/001/
   false_positive_notes: >
     Legitimate admin scripts may use -EncodedCommand or -NonInteractive.
     Tune to your environment's normal PowerShell usage.
@@ -34,6 +39,11 @@
     event_type: process_start
     fields.file_path: ~(?i)(\\temp\\|/tmp/|\\downloads\\|appdata\\local\\temp)
   tags: [execution, temp-dir, dropper]
+  attack:
+    technique_id:   T1204.002
+    technique_name: Malicious File
+    tactic:         Execution
+    url:            https://attack.mitre.org/techniques/T1204/002/
   false_positive_notes: >
     Installers legitimately run from temp dirs. Check if the binary is signed
     and expected. Many software updaters use temp directories.
@@ -54,6 +64,11 @@
     event_type: process_start
     fields.via: sudo
   tags: [privilege-escalation, sudo]
+  attack:
+    technique_id:   T1548.003
+    technique_name: Sudo and Sudo Caching
+    tactic:         Privilege Escalation
+    url:            https://attack.mitre.org/techniques/T1548/003/
   false_positive_notes: >
     Normal admin operations. Only escalate if the user is unexpected,
     the command is sensitive (passwd, visudo, crontab), or timing is odd.

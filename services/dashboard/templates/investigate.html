@@ -156,6 +156,26 @@
   .suppress-full { grid-column:1/-1; }
 
   .fade-msg { font-size:11px; color:var(--accent); display:none; margin-top:4px; }
+
+  /* ── ATT&CK styles ── */
+  .attack-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    background:rgba(255,68,85,.08); border:1px solid rgba(255,68,85,.25);
+    border-radius:3px; padding:4px 10px; text-decoration:none;
+  }
+  .attack-badge:hover { background:rgba(255,68,85,.15); }
+  .attack-tid {
+    font-family:var(--mono); font-size:11px; color:var(--red); font-weight:600;
+  }
+  .attack-name { font-size:11px; color:var(--text2); }
+  .attack-tactic {
+    display:inline-block; font-family:var(--mono); font-size:9px;
+    text-transform:uppercase; letter-spacing:1px;
+    background:rgba(255,68,85,.06); border:1px solid rgba(255,68,85,.2);
+    color:var(--red); padding:2px 7px; border-radius:2px;
+  }
+  .attack-panel-body { padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .attack-desc { font-size:11px; color:var(--text2); line-height:1.6; }
 </style>
 </head>
 <body>
@@ -180,6 +200,13 @@
         <span class="snooze-pill" style="font-size:11px; margin-left:8px;">
           💤 snoozed until {{ alert.snoozed_until[:16].replace('T',' ') }} UTC
         </span>
+        {% endif %}
+        {% if rule_meta.get('attack') %}
+        {% set atk = rule_meta.attack %}
+        <a href="{{ atk.url }}" target="_blank" rel="noopener" class="attack-badge" style="margin-left:8px; vertical-align:middle;">
+          <span class="attack-tid">{{ atk.technique_id }}</span>
+          <span class="attack-name">{{ atk.technique_name }}</span>
+        </a>
         {% endif %}
       </div>
       <div class="alert-summary">{{ alert.summary }}</div>
@@ -365,6 +392,41 @@
 
     <!-- Right: notes history + suppress -->
     <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <!-- ATT&CK Technique -->
+      {% if rule_meta.get('attack') %}
+      {% set atk = rule_meta.attack %}
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">MITRE ATT&amp;CK</span>
+          <span class="attack-tactic">{{ atk.tactic }}</span>
+        </div>
+        <div class="attack-panel-body">
+          <div>
+            <a href="{{ atk.url }}" target="_blank" rel="noopener" class="attack-badge" style="display:inline-flex;">
+              <span class="attack-tid">{{ atk.technique_id }}</span>
+              <span class="attack-name">{{ atk.technique_name }}</span>
+              <span style="color:var(--muted); font-size:10px; margin-left:2px;">↗</span>
+            </a>
+          </div>
+          {% if rule_meta.get('description') %}
+          <div class="attack-desc">{{ rule_meta.description | trim }}</div>
+          {% endif %}
+          {% if rule_meta.get('false_positive_notes') %}
+          <div style="border-top:1px solid var(--border); padding-top:10px;">
+            <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:4px;">False Positive Notes</div>
+            <div class="attack-desc">{{ rule_meta.false_positive_notes | trim }}</div>
+          </div>
+          {% endif %}
+          {% if rule_meta.get('response') %}
+          <div style="border-top:1px solid var(--border); padding-top:10px;">
+            <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:6px;">Response Steps</div>
+            <div style="font-family:var(--mono); font-size:10px; color:var(--text2); white-space:pre-line; line-height:1.7;">{{ rule_meta.response | trim }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
 
       <!-- Notes history -->
       <div class="panel">
