@@ -17,6 +17,12 @@ Routes:
   GET  /alerts/export             — download alerts as CSV or JSON
   GET  /alerts/export-ui          — full export page with filters + preview
   GET  /api/alerts/count          — JSON count preview for export page
+  GET  /threat-intel              — threat intelligence feed manager
+  POST /threat-intel/feeds/add    — add a new TI feed
+  POST /threat-intel/feeds/refresh — fetch/refresh a feed now
+  POST /threat-intel/feeds/delete — remove a feed and its IOCs
+  POST /threat-intel/iocs/add     — manually add an IOC
+  POST /threat-intel/iocs/delete  — remove an IOC
   GET  /events                    — HTMX partial: recent events
   GET  /api/stats                 — JSON stats for dashboard widgets
 """
@@ -225,8 +231,19 @@ async def investigate(request: Request, alert_id: str):
     )
 
     is_snoozed = bool(alert.get("snoozed_until") and alert["snoozed_until"] > now)
+    rule_meta  = _get_rule_meta(alert["rule_id"])
 
-    rule_meta = _get_rule_meta(alert["rule_id"])
+    # TI context for the triggering event's src_ip
+    ti_data = {}
+    if event and isinstance(event.get("fields"), dict):
+        src_ip = event["fields"].get("src_ip")
+        if src_ip and not event["fields"].get("src_ip_internal"):
+            from shared.threat_intel import get_ip_reputation, lookup_ioc
+            ti_data["ip_rep"] = get_ip_reputation(str(src_ip))
+        dns_q = event["fields"].get("dns_query")
+        if dns_q:
+            from shared.threat_intel import get_domain_reputation
+            ti_data["domain_rep"] = get_domain_reputation(str(dns_q))
 
     return templates.TemplateResponse("investigate.html", {
         "request":             request,
@@ -239,6 +256,7 @@ async def investigate(request: Request, alert_id: str):
         "is_snoozed":          is_snoozed,
         "now":                 now,
         "rule_meta":           rule_meta,
+        "ti_data":             ti_data,
     })
 
 
@@ -725,6 +743,142 @@ async def export_ui(request: Request):
         "total":   total["cnt"] if total else 0,
         "oldest":  oldest["ts"][:10] if oldest and oldest["ts"] else "—",
     })
+
+
+# ── Threat Intelligence ───────────────────────────────────────────────────────
+
+@app.get("/threat-intel", response_class=HTMLResponse)
+async def threat_intel_page(request: Request):
+    from shared.threat_intel import seed_builtin_iocs, seed_builtin_feeds
+    seed_builtin_iocs()
+    seed_builtin_feeds()
+
+    feeds = _q("SELECT * FROM ti_feeds ORDER BY added_at DESC")
+    for f in feeds:
+        if isinstance(f.get("tags"), str):
+            try:    f["tags"] = json.loads(f["tags"])
+            except: f["tags"] = []
+
+    iocs = _q(
+        "SELECT * FROM iocs WHERE feed_id IS NULL ORDER BY added_at DESC LIMIT 200"
+    )
+    for i in iocs:
+        if isinstance(i.get("tags"), str):
+            try:    i["tags"] = json.loads(i["tags"])
+            except: i["tags"] = []
+
+    con = get_db(DB_PATH)
+    total_iocs   = con.execute("SELECT COUNT(*) FROM iocs").fetchone()[0]
+    mal_iocs     = con.execute("SELECT COUNT(*) FROM iocs WHERE verdict='malicious'").fetchone()[0]
+    cache_count  = con.execute("SELECT COUNT(*) FROM ip_reputation_cache").fetchone()[0]
+    feed_iocs    = con.execute("SELECT COUNT(*) FROM iocs WHERE feed_id IS NOT NULL").fetchone()[0]
+    con.close()
+
+    api_status = {
+        "abuseipdb":  bool(os.environ.get("ABUSEIPDB_API_KEY")),
+        "virustotal": bool(os.environ.get("VIRUSTOTAL_API_KEY")),
+    }
+
+    return templates.TemplateResponse("threat_intel.html", {
+        "request":     request,
+        "feeds":       feeds,
+        "iocs":        iocs,
+        "total_iocs":  total_iocs,
+        "mal_iocs":    mal_iocs,
+        "cache_count": cache_count,
+        "feed_iocs":   feed_iocs,
+        "api_status":  api_status,
+    })
+
+
+@app.post("/threat-intel/feeds/add")
+async def add_feed(
+    name:      str = Form(...),
+    url:       str = Form(...),
+    feed_type: str = Form("ip"),
+    tags:      str = Form(""),
+    verdict:   str = Form("malicious"),
+    score:     int = Form(75),
+):
+    import json as _json
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    con = get_db(DB_PATH)
+    try:
+        con.execute("""
+            INSERT INTO ti_feeds (name, url, feed_type, format, tags, verdict, score,
+                                  description, enabled, added_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (name, url, feed_type, "plain", _json.dumps(tag_list),
+              verdict, score, "", 1, _now()))
+        con.commit()
+    except Exception as exc:
+        log.warning("add_feed error: %s", exc)
+    con.close()
+    return RedirectResponse("/threat-intel", status_code=303)
+
+
+@app.post("/threat-intel/feeds/refresh")
+async def refresh_feed(feed_id: int = Form(...)):
+    from shared.threat_intel import fetch_feed
+    feed_row = _qone("SELECT * FROM ti_feeds WHERE id=?", feed_id)
+    if not feed_row:
+        return RedirectResponse("/threat-intel", status_code=303)
+
+    if isinstance(feed_row.get("tags"), str):
+        try:    feed_row["tags"] = json.loads(feed_row["tags"])
+        except: feed_row["tags"] = []
+
+    feed_row["feed_id"] = feed_id
+    count, err = fetch_feed(feed_row)
+
+    con = get_db(DB_PATH)
+    con.execute(
+        "UPDATE ti_feeds SET last_fetched=?, last_count=?, last_error=? WHERE id=?",
+        (_now(), count, err or None, feed_id)
+    )
+    con.commit()
+    con.close()
+    log.info("Feed %d refreshed: %d IOCs, err=%s", feed_id, count, err or "none")
+    return RedirectResponse("/threat-intel", status_code=303)
+
+
+@app.post("/threat-intel/feeds/delete")
+async def delete_feed(feed_id: int = Form(...)):
+    con = get_db(DB_PATH)
+    con.execute("DELETE FROM iocs WHERE feed_id=?", (feed_id,))
+    con.execute("DELETE FROM ti_feeds WHERE id=?", (feed_id,))
+    con.commit()
+    con.close()
+    return RedirectResponse("/threat-intel", status_code=303)
+
+
+@app.post("/threat-intel/iocs/add")
+async def add_ioc_manual(
+    ioc_type:    str = Form(...),
+    value:       str = Form(...),
+    verdict:     str = Form("malicious"),
+    score:       int = Form(75),
+    tags:        str = Form(""),
+    actor:       str = Form(""),
+    description: str = Form(""),
+):
+    from shared.threat_intel import add_ioc
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    add_ioc(
+        ioc_type=ioc_type, value=value, verdict=verdict,
+        score=score, tags=tag_list, source="manual",
+        description=description, actor=actor,
+    )
+    return RedirectResponse("/threat-intel", status_code=303)
+
+
+@app.post("/threat-intel/iocs/delete")
+async def delete_ioc(ioc_id: int = Form(...)):
+    con = get_db(DB_PATH)
+    con.execute("DELETE FROM iocs WHERE id=?", (ioc_id,))
+    con.commit()
+    con.close()
+    return RedirectResponse("/threat-intel", status_code=303)
 
 
 # ── Events partial ────────────────────────────────────────────────────────────

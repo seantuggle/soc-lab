@@ -65,3 +65,20 @@ services:
       ingestion:
         condition: service_healthy
     command: ["--scenario", "all", "--loop", "--interval", "3"]
+
+  attacker-ui:
+    build:
+      context: .
+      dockerfile: services/attacker/Dockerfile
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./db:/app/db
+    environment:
+      - INGESTION_URL=http://ingestion:8001
+      - SOC_URL=http://localhost:8080
+      - DB_PATH=/app/db/soc.db
+      - LOG_LEVEL=INFO
+    depends_on:
+      ingestion:
+        condition: service_healthy

@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOC Lab — Attack Simulator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:      #0d0608;
+    --bg2:     #130a0c;
+    --bg3:     #1a0e10;
+    --border:  #2d1518;
+    --red:     #ff2244;
+    --red2:    #cc1133;
+    --orange:  #ff6600;
+    --yellow:  #ffcc00;
+    --purple:  #cc44ff;
+    --blue:    #4488ff;
+    --green:   #00cc66;
+    --muted:   #5a3035;
+    --text:    #e8ccd0;
+    --text2:   #8a5560;
+    --mono:    'Share Tech Mono', monospace;
+    --sans:    'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+      rgba(255,0,0,0.015) 2px, rgba(255,0,0,0.015) 4px);
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 2px solid var(--red2);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--red);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(255,34,68,.5);
+  }
+  .logo-sub { font-size: 10px; color: var(--text2); letter-spacing: 2px; margin-left: 8px; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: none;
+    transition: background .3s, box-shadow .3s;
+  }
+  .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .status-text { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+
+  .soc-link {
+    font-family: var(--mono); font-size: 11px; color: var(--text2);
+    text-decoration: none; border: 1px solid var(--border); padding: 4px 10px;
+    border-radius: 3px; transition: border-color .15s, color .15s;
+  }
+  .soc-link:hover { border-color: var(--red); color: var(--red); }
+
+  /* ── Layout ── */
+  .page { display: grid; grid-template-columns: 1fr 360px; min-height: calc(100vh - 56px); }
+
+  /* ── Left: scenario grid ── */
+  .scenarios-pane { padding: 24px; overflow-y: auto; }
+  .pane-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text2); margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pane-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* Target + timing selectors */
+  .launch-controls {
+    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;
+  }
+  .ctrl-group { display: flex; flex-direction: column; gap: 5px; }
+  .ctrl-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); }
+  select {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 3px; font-family: var(--mono); font-size: 11px;
+    outline: none; min-width: 150px;
+  }
+  select:focus { border-color: var(--red2); }
+  select option { background: var(--bg3); }
+
+  /* Scenario cards grid */
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .scenario-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .15s, transform .1s;
+    cursor: pointer;
+  }
+  .scenario-card:hover { border-color: var(--red2); transform: translateY(-1px); }
+  .scenario-card.active { border-color: var(--red); box-shadow: 0 0 16px rgba(255,34,68,.2); }
+  .scenario-card.chain {
+    border-color: rgba(255,34,68,.4);
+    background: linear-gradient(135deg, var(--bg2), #1a0a0d);
+    grid-column: span 2;
+  }
+  .scenario-card.chain:hover { border-color: var(--red); }
+
+  /* Left colour bar */
+  .scenario-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  }
+  .card-red::before    { background: var(--red); }
+  .card-orange::before { background: var(--orange); }
+  .card-yellow::before { background: var(--yellow); }
+  .card-purple::before { background: var(--purple); }
+  .card-blue::before   { background: var(--blue); }
+
+  .card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+  .card-icon { font-size: 22px; line-height: 1; }
+  .card-title-row { flex: 1; }
+  .card-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .card-technique { font-family: var(--mono); font-size: 10px; color: var(--text2); }
+
+  .card-desc { font-size: 11px; color: var(--text2); line-height: 1.6; margin-bottom: 10px; }
+
+  .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card-tag {
+    font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+    border-radius: 2px; letter-spacing: .5px;
+  }
+  .tag-tactic  { background: rgba(255,34,68,.1);  color: var(--red);    border: 1px solid rgba(255,34,68,.25); }
+  .tag-events  { background: rgba(255,255,255,.04); color: var(--text2); border: 1px solid var(--border); }
+  .tag-chain   { background: rgba(255,34,68,.15); color: var(--red); border: 1px solid rgba(255,34,68,.4); }
+
+  .card-rules { font-size: 10px; color: var(--text2); margin-bottom: 12px; line-height: 1.6; }
+  .card-rules span { color: var(--orange); font-family: var(--mono); }
+
+  .launch-btn {
+    width: 100%; padding: 8px; border: none; border-radius: 4px;
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    letter-spacing: 1px; cursor: pointer; text-transform: uppercase;
+    transition: background .15s, transform .1s;
+  }
+  .launch-btn:active { transform: scale(.98); }
+  .launch-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-red    { background: rgba(255,34,68,.2);  color: var(--red);    border: 1px solid rgba(255,34,68,.4); }
+  .btn-red:hover:not(:disabled)    { background: rgba(255,34,68,.35); }
+  .btn-orange { background: rgba(255,102,0,.18); color: var(--orange); border: 1px solid rgba(255,102,0,.35); }
+  .btn-orange:hover:not(:disabled) { background: rgba(255,102,0,.3); }
+  .btn-yellow { background: rgba(255,204,0,.12); color: var(--yellow); border: 1px solid rgba(255,204,0,.3); }
+  .btn-yellow:hover:not(:disabled) { background: rgba(255,204,0,.22); }
+  .btn-purple { background: rgba(204,68,255,.15); color: var(--purple); border: 1px solid rgba(204,68,255,.3); }
+  .btn-purple:hover:not(:disabled) { background: rgba(204,68,255,.25); }
+  .btn-blue   { background: rgba(68,136,255,.15); color: var(--blue);   border: 1px solid rgba(68,136,255,.3); }
+  .btn-blue:hover:not(:disabled)   { background: rgba(68,136,255,.25); }
+
+  /* Running shimmer on active card */
+  @keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .scenario-card.running::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,34,68,.06) 50%, transparent 100%);
+    background-size: 400px 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* ── Right panel: live feed + detection ── */
+  .right-pane {
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 56px);
+    position: sticky;
+    top: 56px;
+  }
+
+  .right-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .right-title { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--text2); }
+  .clear-btn {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    font-size: 10px; padding: 2px 8px; border-radius: 2px; cursor: pointer;
+    font-family: var(--mono);
+  }
+  .clear-btn:hover { border-color: var(--red2); color: var(--red); }
+
+  /* Stage indicator */
+  .stage-banner {
+    padding: 8px 14px;
+    background: rgba(255,34,68,.08);
+    border-bottom: 1px solid rgba(255,34,68,.2);
+    font-family: var(--mono); font-size: 11px; color: var(--red);
+    display: none;
+  }
+  .stage-banner.visible { display: block; }
+
+  /* Event feed */
+  .event-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .event-feed::-webkit-scrollbar { width: 4px; }
+  .event-feed::-webkit-scrollbar-track { background: transparent; }
+  .event-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .feed-entry {
+    padding: 5px 14px;
+    border-bottom: 1px solid rgba(45,21,24,.5);
+    display: grid;
+    grid-template-columns: 55px 110px 1fr;
+    gap: 6px;
+    align-items: center;
+    font-size: 11px;
+    animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(6px); } }
+  .feed-entry:hover { background: rgba(255,255,255,.02); }
+
+  .feed-time  { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .feed-type  { font-family: var(--mono); font-size: 10px; }
+  .feed-type.auth_fail      { color: var(--red); }
+  .feed-type.auth_success   { color: var(--green); }
+  .feed-type.process_start  { color: var(--orange); }
+  .feed-type.dns_query      { color: #88aaff; }
+  .feed-type.dns_suspicious { color: var(--purple); }
+  .feed-type.user_created   { color: var(--red); }
+  .feed-type.web_404        { color: var(--yellow); }
+  .feed-type.web_401        { color: var(--orange); }
+  .feed-type.impossible_travel { color: var(--blue); }
+  .feed-type.other          { color: var(--text2); }
+  .feed-detail { font-size: 10px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .feed-empty { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+
+  /* ── Detection results ── */
+  .detection-section {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .detection-header {
+    padding: 8px 14px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--text2);
+    background: var(--bg3); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0;
+  }
+  .detection-live {
+    font-family: var(--mono); font-size: 9px; color: var(--green);
+    animation: pulse-text 2s infinite;
+  }
+  @keyframes pulse-text { 50% { opacity: .4; } }
+
+  .alert-entry {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(45,21,24,.5);
+    animation: slideIn .3s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } }
+
+  .alert-entry.high   { border-left: 3px solid var(--red); }
+  .alert-entry.medium { border-left: 3px solid var(--orange); }
+  .alert-entry.low    { border-left: 3px solid var(--yellow); }
+
+  .alert-rule { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .alert-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .alert-sev  {
+    font-family: var(--mono); font-size: 9px; padding: 1px 5px; border-radius: 2px;
+    text-transform: uppercase;
+  }
+  .sev-high   { background: rgba(255,34,68,.15);  color: var(--red); }
+  .sev-medium { background: rgba(255,102,0,.12);  color: var(--orange); }
+  .sev-low    { background: rgba(255,204,0,.1);   color: var(--yellow); }
+  .alert-host { font-family: var(--mono); font-size: 10px; color: var(--text2); }
+  .alert-tactic { font-size: 9px; color: var(--muted); }
+  .alert-link { font-size: 10px; color: #4488ff; text-decoration: none; margin-left: auto; }
+  .alert-link:hover { color: var(--red); }
+  .detection-empty { padding: 16px 14px; color: var(--muted); font-size: 11px; }
+
+  /* ── Done banner ── */
+  .done-banner {
+    display: none; padding: 10px 14px;
+    background: rgba(0,204,102,.08); border-top: 1px solid rgba(0,204,102,.2);
+    font-family: var(--mono); font-size: 11px; color: var(--green);
+    text-align: center;
+  }
+  .done-banner.visible { display: block; }
+
+  /* Scrollable cards area */
+  @media (max-width: 900px) {
+    .page { grid-template-columns: 1fr; }
+    .right-pane { position: static; height: 500px; }
+    .scenario-card.chain { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <span class="logo">⚔ ATTACK SIM</span>
+    <span class="logo-sub">SOC LAB RED TEAM</span>
+  </div>
+  <div class="header-right">
+    <div id="status-dot" class="status-dot"></div>
+    <span class="status-text" id="status-text">checking…</span>
+    <a href="{{ soc_url }}" target="_blank" class="soc-link">→ SOC Dashboard</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- ── Left: scenario launcher ── -->
+  <div class="scenarios-pane">
+
+    <div class="pane-title">Launch Controls</div>
+
+    <div class="launch-controls">
+      <div class="ctrl-group">
+        <div class="ctrl-label">Target Host</div>
+        <select id="target-host">
+          <option value="random">Random host</option>
+          <option value="workstation-01">workstation-01</option>
+          <option value="workstation-02">workstation-02</option>
+          <option value="server-db01">server-db01</option>
+          <option value="server-web01">server-web01</option>
+          <option value="laptop-ceo">laptop-ceo</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <div class="ctrl-label">Attack Timing</div>
+        <select id="timing">
+          <option value="instant">Instant (testing)</option>
+          <option value="normal" selected>Normal (realistic)</option>
+          <option value="stealthy">Stealthy (slow)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pane-title">Attack Scenarios</div>
+
+    <div class="scenario-grid" id="scenario-grid">
+      {% for id, s in scenarios.items() %}
+      <div class="scenario-card card-{{ s.color }}{% if s.get('is_chain') %} chain{% endif %}"
+           id="card-{{ id }}" data-scenario="{{ id }}">
+        <div class="card-header">
+          <div class="card-icon">{{ s.icon }}</div>
+          <div class="card-title-row">
+            <div class="card-name">{{ s.name }}</div>
+            <div class="card-technique">{{ s.technique }} · {{ s.tactic }}</div>
+          </div>
+        </div>
+        <div class="card-desc">{{ s.description }}</div>
+        <div class="card-tags">
+          <span class="card-tag tag-tactic">{{ s.tactic }}</span>
+          <span class="card-tag tag-events">{{ s.event_count }}</span>
+          {% if s.get('is_chain') %}<span class="card-tag tag-chain">☠ FULL CHAIN</span>{% endif %}
+        </div>
+        <div class="card-rules">
+          Expects: {% for r in s.expected_rules %}<span>{{ r }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+        <button class="launch-btn btn-{{ s.color }}" onclick="launch('{{ id }}')" id="btn-{{ id }}">
+          ▶ Launch {{ s.name }}
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- ── Right: live feed + detection ── -->
+  <div class="right-pane">
+
+    <div class="right-header">
+      <span class="right-title">Live Event Feed</span>
+      <button class="clear-btn" onclick="clearFeed()">✕ Clear</button>
+    </div>
+
+    <div class="stage-banner" id="stage-banner"></div>
+
+    <div class="event-feed" id="event-feed">
+      <div class="feed-empty" id="feed-empty">
+        No events yet.<br>Launch a scenario to begin.
+      </div>
+    </div>
+
+    <div class="detection-section">
+      <div class="detection-header">
+        <span>Detection Results</span>
+        <span class="detection-live" id="detection-live" style="display:none;">● LIVE</span>
+      </div>
+      <div id="alert-feed">
+        <div class="detection-empty" id="alert-empty">
+          Alerts will appear here after launch.
+        </div>
+      </div>
+    </div>
+
+    <div class="done-banner" id="done-banner">
+      ✓ Scenario complete — check SOC Dashboard for full alert details
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SOC_URL = '{{ soc_url }}';
+let _currentEs    = null;   // active EventSource
+let _alertPoll    = null;   // setInterval handle
+let _eventCount   = 0;
+let _seenAlerts   = new Set();
+let _running      = false;
+
+// ── Status check ────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (d.ingestion_ok) {
+      dot.className  = 'status-dot online';
+      text.textContent = 'Ingestion online';
+    } else {
+      dot.className  = 'status-dot offline';
+      text.textContent = 'Ingestion offline';
+    }
+  } catch {
+    document.getElementById('status-dot').className = 'status-dot offline';
+    document.getElementById('status-text').textContent = 'Cannot reach ingestion';
+  }
+}
+checkStatus();
+setInterval(checkStatus, 15000);
+
+// ── Launch ───────────────────────────────────────────────────────────────
+async function launch(scenario) {
+  if (_running) return;
+  _running = true;
+
+  const targetHost = document.getElementById('target-host').value;
+  const timing     = document.getElementById('timing').value;
+
+  // Disable all buttons, highlight active card
+  document.querySelectorAll('.launch-btn').forEach(b => b.disabled = true);
+  const card = document.getElementById('card-' + scenario);
+  if (card) { card.classList.add('active', 'running'); }
+
+  // Reset UI
+  document.getElementById('done-banner').classList.remove('visible');
+  document.getElementById('stage-banner').classList.remove('visible');
+
+  // Launch via API
+  const res = await fetch('/api/launch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, target_host: targetHost, timing }),
+  });
+  const { run_id } = await res.json();
+
+  // Start alert polling
+  _seenAlerts.clear();
+  document.getElementById('detection-live').style.display = 'inline';
+  _alertPoll = setInterval(pollAlerts, 2000);
+
+  // Open SSE stream
+  if (_currentEs) _currentEs.close();
+  const es = new EventSource('/api/stream/' + run_id);
+  _currentEs = es;
+
+  es.addEventListener('event',  e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('stage',  e => handleStage(JSON.parse(e.data)));
+  es.addEventListener('start',  e => handleStart(JSON.parse(e.data)));
+  es.addEventListener('done',   e => handleDone(JSON.parse(e.data), scenario));
+  es.addEventListener('error',  e => handleError(JSON.parse(e.data || '{}')));
+  es.addEventListener('close',  () => { es.close(); });
+}
+
+function handleStart(d) {
+  addFeedDivider(`▶ ${d.scenario} — timing: ${d.timing} — target: ${d.target}`);
+}
+
+function handleStage(d) {
+  const banner = document.getElementById('stage-banner');
+  banner.textContent = '⚡ ' + d.name;
+  banner.classList.add('visible');
+  addFeedDivider(d.name);
+}
+
+function handleEvent(d) {
+  _eventCount++;
+  document.getElementById('feed-empty').style.display = 'none';
+
+  const feed = document.getElementById('event-feed');
+  const row  = document.createElement('div');
+  row.className = 'feed-entry';
+
+  const detail = [d.host, d.user, d.src_ip].filter(Boolean).join(' · ');
+  const typeClass = [
+    'auth_fail','auth_success','process_start','dns_query',
+    'dns_suspicious','user_created','web_404','web_401','impossible_travel'
+  ].includes(d.event_type) ? d.event_type : 'other';
+
+  row.innerHTML = `
+    <span class="feed-time">${d.ts}</span>
+    <span class="feed-type ${typeClass}">${d.event_type}</span>
+    <span class="feed-detail">${detail}</span>
+  `;
+  feed.appendChild(row);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function handleDone(d, scenario) {
+  const card = document.getElementById('card-' + scenario);
+  if (card) { card.classList.remove('running'); }
+  document.getElementById('stage-banner').classList.remove('visible');
+  document.getElementById('done-banner').classList.add('visible');
+
+  // Keep polling for a few more seconds then stop
+  setTimeout(() => {
+    clearInterval(_alertPoll);
+    document.getElementById('detection-live').style.display = 'none';
+    document.querySelectorAll('.launch-btn').forEach(b => b.disabled = false);
+    if (card) card.classList.remove('active');
+    _running = false;
+  }, 5000);
+}
+
+function handleError(d) {
+  addFeedDivider('✗ Error: ' + (d.message || 'unknown'));
+  _running = false;
+  document.querySelectorAll('.launch-btn').forEach(b => b.disabled = false);
+}
+
+// ── Alert polling ────────────────────────────────────────────────────────
+async function pollAlerts() {
+  try {
+    const r = await fetch('/api/recent-alerts?seconds=90');
+    const d = await r.json();
+    const container = document.getElementById('alert-feed');
+
+    d.alerts.forEach(alert => {
+      if (_seenAlerts.has(alert.alert_id)) return;
+      _seenAlerts.add(alert.alert_id);
+
+      document.getElementById('alert-empty').style.display = 'none';
+
+      const el = document.createElement('div');
+      el.className = `alert-entry ${alert.severity}`;
+      el.innerHTML = `
+        <div class="alert-rule">⚠ ${alert.rule_name}</div>
+        <div class="alert-meta">
+          <span class="alert-sev sev-${alert.severity}">${alert.severity}</span>
+          <span class="alert-host">${alert.host}</span>
+          ${alert.attack_tactic ? `<span class="alert-tactic">${alert.attack_tactic} · ${alert.attack_technique_id || ''}</span>` : ''}
+          ${alert.hit_count > 1 ? `<span style="font-family:var(--mono);font-size:9px;color:var(--orange);">×${alert.hit_count}</span>` : ''}
+          <a href="${SOC_URL}/alert/${alert.alert_id}" target="_blank" class="alert-link">Investigate →</a>
+        </div>
+      `;
+      // Prepend so newest is at top
+      container.insertBefore(el, container.firstChild);
+    });
+  } catch { /* DB not ready yet */ }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function addFeedDivider(text) {
+  const feed = document.getElementById('event-feed');
+  const div  = document.createElement('div');
+  div.style.cssText = 'padding:6px 14px;font-family:var(--mono);font-size:10px;'
+    + 'color:var(--red);border-bottom:1px solid rgba(255,34,68,.2);'
+    + 'background:rgba(255,34,68,.04);letter-spacing:.5px;';
+  div.textContent = '── ' + text + ' ──';
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function clearFeed() {
+  document.getElementById('event-feed').innerHTML =
+    '<div class="feed-empty" id="feed-empty">No events yet.<br>Launch a scenario to begin.</div>';
+  document.getElementById('alert-feed').innerHTML =
+    '<div class="detection-empty" id="alert-empty">Alerts will appear here after launch.</div>';
+  document.getElementById('done-banner').classList.remove('visible');
+  document.getElementById('stage-banner').classList.remove('visible');
+  _eventCount = 0;
+  _seenAlerts.clear();
+}
+</script>
+</body>
+</html>

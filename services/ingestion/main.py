@@ -22,6 +22,7 @@ from typing import Any
 from shared.schema    import init_db, get_db, DB_PATH
 from shared.normalizers import normalize, PARSERS
 from shared.enrichment  import enrich_event
+from shared.threat_intel import enrich_threat_intel, seed_builtin_iocs, seed_builtin_feeds
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s [ingestion] %(levelname)s %(message)s")
@@ -46,6 +47,10 @@ def _bump(source: str):
 async def lifespan(app: FastAPI):
     log.info("Initializing database …")
     init_db(DB_PATH)
+    n = seed_builtin_iocs()
+    log.info("Seeded %d built-in IOCs", n)
+    seed_builtin_feeds()
+    log.info("Built-in TI feeds registered")
     _start_log_tailer()
     yield
     log.info("Shutting down ingestion service.")
@@ -120,7 +125,8 @@ def ingest_one(source: str, payload: Any) -> dict:
     _bump(source)
     try:
         event = normalize(source, payload)
-        enrich_event(event)          # adds src_ip_country, src_ip_asn, src_ip_internal
+        enrich_event(event)            # geo: country, ASN, internal flag
+        enrich_threat_intel(event)     # TI: IOC match, reputation, tags
         _store_normalized(event)
         _update_source_health(source)
         log.info("Ingested %s event_id=%s type=%s", source, event.event_id[:8], event.event_type)

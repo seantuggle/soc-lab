@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOC Lab — Threat Intelligence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10;--bg2:#0f1318;--bg3:#151a22;--border:#1e2733;
+    --accent:#00d4aa;--accent2:#0099ff;--red:#ff4455;--orange:#ff8800;
+    --yellow:#ffcc00;--muted:#4a5568;--text:#c8d6e5;--text2:#7a8fa6;
+    --mono:'Share Tech Mono',monospace;--sans:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);}
+  header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:52px;
+    display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;}
+  .logo{font-family:var(--mono);font-size:15px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;}
+  .logo span{color:var(--text2);}
+  nav{display:flex;gap:4px;margin-left:24px;}
+  nav a{font-family:var(--mono);font-size:11px;color:var(--text2);text-decoration:none;
+    padding:4px 10px;border-radius:3px;border:1px solid transparent;transition:border-color .15s,color .15s;}
+  nav a:hover{border-color:var(--border);color:var(--text);}
+  nav a.active{border-color:var(--accent);color:var(--accent);}
+  .back{margin-left:auto;color:var(--accent2);text-decoration:none;font-size:12px;}
+
+  .content{padding:24px;max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:24px;}
+  .page-title{font-size:22px;font-weight:600;}
+  .page-sub{color:var(--text2);font-size:12px;margin-top:4px;}
+
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px 16px;position:relative;overflow:hidden;}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+  .stat-card.red::before{background:var(--red);}
+  .stat-card.orange::before{background:var(--orange);}
+  .stat-card.green::before{background:var(--accent);}
+  .stat-card.blue::before{background:var(--accent2);}
+  .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:6px;}
+  .stat-value{font-family:var(--mono);font-size:28px;line-height:1;}
+  .stat-card.red .stat-value{color:var(--red);}
+  .stat-card.orange .stat-value{color:var(--orange);}
+  .stat-card.green .stat-value{color:var(--accent);}
+  .stat-card.blue .stat-value{color:var(--accent2);}
+  .stat-sub{color:var(--text2);font-size:11px;margin-top:5px;}
+
+  /* API status */
+  .api-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .api-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;
+    padding:4px 10px;border-radius:3px;}
+  .api-badge.active{background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);color:var(--accent);}
+  .api-badge.inactive{background:rgba(74,85,104,.15);border:1px solid rgba(74,85,104,.3);color:var(--muted);}
+
+  .panel{background:var(--bg2);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .panel-header{padding:10px 16px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;background:var(--bg3);}
+  .panel-title{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text2);font-weight:500;}
+
+  table{width:100%;border-collapse:collapse;}
+  th{padding:8px 12px;text-align:left;font-size:9px;text-transform:uppercase;
+    letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--bg3);}
+  td{padding:8px 12px;border-bottom:1px solid rgba(30,39,51,.6);font-size:12px;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+  .mono-sm{font-family:var(--mono);font-size:11px;color:var(--text2);}
+
+  .verdict-badge{display:inline-block;padding:2px 7px;border-radius:2px;font-family:var(--mono);
+    font-size:10px;text-transform:uppercase;letter-spacing:1px;}
+  .verdict-malicious{background:rgba(255,68,85,.12);color:var(--red);border:1px solid rgba(255,68,85,.3);}
+  .verdict-suspicious{background:rgba(255,136,0,.1);color:var(--orange);border:1px solid rgba(255,136,0,.3);}
+  .verdict-clean{background:rgba(0,212,170,.08);color:var(--accent);border:1px solid rgba(0,212,170,.25);}
+
+  .tag{display:inline-block;padding:1px 6px;margin:1px;border-radius:2px;
+    font-family:var(--mono);font-size:9px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);}
+
+  .btn{border:none;padding:5px 12px;border-radius:3px;cursor:pointer;font-size:11px;font-family:var(--sans);}
+  .btn-primary{background:var(--accent2);color:#fff;}
+  .btn-primary:hover{background:var(--accent);}
+  .btn-danger{background:rgba(255,68,85,.12);color:var(--red);border:1px solid rgba(255,68,85,.3);}
+  .btn-danger:hover{background:rgba(255,68,85,.25);}
+  .btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--accent2);color:var(--accent2);}
+  .btn-warn{background:rgba(255,136,0,.1);color:var(--orange);border:1px solid rgba(255,136,0,.3);}
+  .btn-warn:hover{background:rgba(255,136,0,.2);}
+
+  select,input[type="text"],input[type="url"],input[type="number"]{
+    background:var(--bg3);border:1px solid var(--border);color:var(--text);
+    padding:6px 10px;border-radius:3px;font-family:var(--mono);font-size:12px;outline:none;}
+  select:focus,input:focus{border-color:var(--accent2);}
+
+  .form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px;}
+  .form-group{display:flex;flex-direction:column;gap:5px;}
+  .form-group.full{grid-column:1/-1;}
+  .form-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);}
+  input[type="text"],input[type="url"]{width:100%;}
+  input[type="number"]{width:80px;}
+
+  .empty{padding:32px;text-align:center;color:var(--muted);font-size:12px;}
+  .info-box{background:rgba(0,153,255,.06);border:1px solid rgba(0,153,255,.2);
+    border-radius:4px;padding:14px 18px;font-size:12px;color:var(--text2);line-height:1.7;}
+  .info-box strong{color:var(--text);}
+  code{font-family:var(--mono);font-size:11px;background:var(--bg3);padding:1px 5px;border-radius:2px;}
+
+  .error-text{color:var(--red);font-size:10px;font-family:var(--mono);}
+  .success-text{color:var(--accent);font-size:10px;font-family:var(--mono);}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SOC<span>/</span>LAB</div>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/attack-coverage">ATT&amp;CK Coverage</a>
+    <a href="/suppressions">Suppressions</a>
+    <a href="/alerts/export-ui">Export</a>
+    <a href="/threat-intel" class="active">Threat Intel</a>
+  </nav>
+  <a href="/" class="back">← Dashboard</a>
+</header>
+
+<div class="content">
+
+  <div>
+    <div class="page-title">🔍 Threat Intelligence</div>
+    <div class="page-sub">IOC database, reputation feeds, and API integrations</div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card red">
+      <div class="stat-label">Total IOCs</div>
+      <div class="stat-value">{{ total_iocs }}</div>
+      <div class="stat-sub">{{ mal_iocs }} malicious</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-label">From Feeds</div>
+      <div class="stat-value">{{ feed_iocs }}</div>
+      <div class="stat-sub">{{ feeds | length }} feeds configured</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Manual IOCs</div>
+      <div class="stat-value">{{ iocs | length }}</div>
+      <div class="stat-sub">hand-curated entries</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Cached Lookups</div>
+      <div class="stat-value">{{ cache_count }}</div>
+      <div class="stat-sub">reputation results</div>
+    </div>
+  </div>
+
+  <!-- API Status -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">External API Status</span></div>
+    <div style="padding:14px 16px;">
+      <div class="api-row">
+        <div class="api-badge {% if api_status.abuseipdb %}active{% else %}inactive{% endif %}">
+          {% if api_status.abuseipdb %}✓{% else %}✗{% endif %} AbuseIPDB
+        </div>
+        <div class="api-badge {% if api_status.virustotal %}active{% else %}inactive{% endif %}">
+          {% if api_status.virustotal %}✓{% else %}✗{% endif %} VirusTotal
+        </div>
+        {% if not api_status.abuseipdb and not api_status.virustotal %}
+        <span style="font-size:11px;color:var(--text2);">
+          No API keys configured — using local IOC database only.
+          Set <code>ABUSEIPDB_API_KEY</code> or <code>VIRUSTOTAL_API_KEY</code>
+          in docker-compose.yml to enable live lookups.
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Feeds -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">TI Feeds</span>
+      <span style="font-size:10px;color:var(--text2);">{{ feeds | length }} configured</span>
+    </div>
+
+    {% if feeds %}
+    <table>
+      <thead><tr>
+        <th>Feed Name</th><th>Type</th><th>Tags</th>
+        <th>Last Fetched</th><th>IOCs Added</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for f in feeds %}
+      <tr>
+        <td>
+          <div style="font-size:12px;font-weight:500;">{{ f.name }}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.url }}</div>
+        </td>
+        <td><span class="verdict-badge {% if f.feed_type=='ip' %}verdict-suspicious{% else %}verdict-malicious{% endif %}">{{ f.feed_type }}</span></td>
+        <td>{% for t in f.tags %}<span class="tag">{{ t }}</span>{% endfor %}</td>
+        <td class="mono-sm">{{ f.last_fetched[:16].replace('T',' ') if f.last_fetched else '—' }}</td>
+        <td class="mono-sm" style="color:{% if f.last_count %}var(--accent){% else %}var(--muted){% endif %};">
+          {{ f.last_count if f.last_count is not none else '—' }}
+        </td>
+        <td>
+          {% if f.last_error %}
+          <span class="error-text">Error</span>
+          {% elif f.last_fetched %}
+          <span class="success-text">OK</span>
+          {% else %}
+          <span style="color:var(--muted);font-size:10px;">Never fetched</span>
+          {% endif %}
+        </td>
+        <td style="display:flex;gap:6px;align-items:center;">
+          <form method="POST" action="/threat-intel/feeds/refresh" style="display:inline;">
+            <input type="hidden" name="feed_id" value="{{ f.id }}">
+            <button type="submit" class="btn btn-ghost" title="Fetch this feed now">↻ Fetch</button>
+          </form>
+          <form method="POST" action="/threat-intel/feeds/delete" style="display:inline;">
+            <input type="hidden" name="feed_id" value="{{ f.id }}">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this feed and all its IOCs?')">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No feeds configured yet. Add one below or click Fetch on a built-in feed.</div>
+    {% endif %}
+
+    <!-- Add feed form -->
+    <div style="border-top:1px solid var(--border);">
+      <div style="padding:10px 16px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);background:var(--bg3);">Add Feed</div>
+      <form method="POST" action="/threat-intel/feeds/add">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label class="form-label">Feed URL</label>
+            <input type="url" name="url" placeholder="https://example.com/feed.txt" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" placeholder="My Feed" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">IOC Type</label>
+            <select name="feed_type">
+              <option value="ip">IP addresses</option>
+              <option value="domain">Domains</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tags (comma-separated)</label>
+            <input type="text" name="tags" placeholder="c2, malware">
+          </div>
+        </div>
+        <div style="padding:0 16px 16px;">
+          <button type="submit" class="btn btn-primary">Add Feed</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Manual IOCs -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Manual IOCs</span>
+      <span style="font-size:10px;color:var(--text2);">Includes built-in seed data</span>
+    </div>
+
+    {% if iocs %}
+    <div style="max-height:400px;overflow-y:auto;">
+    <table>
+      <thead><tr>
+        <th>Type</th><th>Value</th><th>Verdict</th><th>Score</th>
+        <th>Tags</th><th>Source</th><th>Actor</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for i in iocs %}
+      <tr>
+        <td><span class="verdict-badge verdict-suspicious">{{ i.type }}</span></td>
+        <td class="mono-sm">{{ i.value }}</td>
+        <td><span class="verdict-badge verdict-{{ i.verdict }}">{{ i.verdict }}</span></td>
+        <td class="mono-sm" style="color:{% if i.score>=75 %}var(--red){% elif i.score>=50 %}var(--orange){% else %}var(--text2){% endif %};">{{ i.score }}</td>
+        <td>{% for t in i.tags %}<span class="tag">{{ t }}</span>{% endfor %}</td>
+        <td class="mono-sm">{{ i.source }}</td>
+        <td class="mono-sm">{{ i.actor or '—' }}</td>
+        <td>
+          {% if i.source != 'builtin' %}
+          <form method="POST" action="/threat-intel/iocs/delete" style="display:inline;">
+            <input type="hidden" name="ioc_id" value="{{ i.id }}">
+            <button type="submit" class="btn btn-danger" style="padding:3px 8px;">✕</button>
+          </form>
+          {% else %}
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);">builtin</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">No manual IOCs. Add one below.</div>
+    {% endif %}
+
+    <!-- Add IOC form -->
+    <div style="border-top:1px solid var(--border);">
+      <div style="padding:10px 16px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);background:var(--bg3);">Add IOC Manually</div>
+      <form method="POST" action="/threat-intel/iocs/add">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select name="ioc_type">
+              <option value="ip">IP</option>
+              <option value="domain">Domain</option>
+              <option value="hash">Hash</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Value</label>
+            <input type="text" name="value" placeholder="1.2.3.4 or evil.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Verdict</label>
+            <select name="verdict">
+              <option value="malicious">Malicious</option>
+              <option value="suspicious">Suspicious</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Score (0–100)</label>
+            <input type="number" name="score" value="75" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tags (comma-separated)</label>
+            <input type="text" name="tags" placeholder="c2, brute-force">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Threat Actor (optional)</label>
+            <input type="text" name="actor" placeholder="APT28">
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Description (optional)</label>
+            <input type="text" name="description" placeholder="Why this is malicious…">
+          </div>
+        </div>
+        <div style="padding:0 16px 16px;">
+          <button type="submit" class="btn btn-primary">Add IOC</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- How to use -->
+  <div class="info-box">
+    <strong>How it works:</strong><br>
+    Every event ingested is checked against the IOC database automatically.
+    If a <code>src_ip</code> matches a known-bad IP, or a <code>dns_query</code> matches a known C2 domain,
+    the event's <code>fields</code> are tagged with <code>src_ip_ti_verdict</code>, <code>src_ip_ti_tags</code>,
+    and <code>src_ip_ti_score</code>. These appear in the investigation view under <strong>Threat Intelligence</strong>.<br><br>
+    <strong>Feeds:</strong> Click <em>↻ Fetch</em> to pull a feed now. Large feeds (Feodo, ET) may take a few seconds.
+    IOCs from feeds are stored locally so lookups are always instant — no API call on every event.<br><br>
+    <strong>API keys:</strong> Set <code>ABUSEIPDB_API_KEY</code> and/or <code>VIRUSTOTAL_API_KEY</code>
+    in your <code>docker-compose.yml</code> environment block for live reputation lookups on IPs not in your local IOC table.
+    Results are cached for 24 hours.
+  </div>
+
+</div>
+</body>
+</html>

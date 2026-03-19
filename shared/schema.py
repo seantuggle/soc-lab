@@ -174,6 +174,52 @@ def init_db(path: str = DB_PATH):
     CREATE INDEX IF NOT EXISTS idx_ne_source     ON normalized_events(source);
     CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
     CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at);
+
+    CREATE TABLE IF NOT EXISTS iocs (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        type        TEXT    NOT NULL,
+        value       TEXT    NOT NULL,
+        verdict     TEXT    NOT NULL DEFAULT 'malicious',
+        score       INTEGER NOT NULL DEFAULT 75,
+        tags        TEXT    NOT NULL DEFAULT '[]',
+        source      TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        actor       TEXT    NOT NULL DEFAULT '',
+        added_at    TEXT    NOT NULL,
+        expires_at  TEXT,
+        feed_id     INTEGER,
+        UNIQUE(type, value)
+    );
+
+    CREATE TABLE IF NOT EXISTS ip_reputation_cache (
+        ip          TEXT PRIMARY KEY,
+        verdict     TEXT NOT NULL,
+        score       INTEGER NOT NULL DEFAULT 0,
+        tags        TEXT NOT NULL DEFAULT '[]',
+        source      TEXT NOT NULL,
+        checked_at  TEXT NOT NULL,
+        expires_at  TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ti_feeds (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        url         TEXT NOT NULL UNIQUE,
+        feed_type   TEXT NOT NULL DEFAULT 'ip',
+        format      TEXT NOT NULL DEFAULT 'plain',
+        tags        TEXT NOT NULL DEFAULT '[]',
+        verdict     TEXT NOT NULL DEFAULT 'malicious',
+        score       INTEGER NOT NULL DEFAULT 75,
+        description TEXT NOT NULL DEFAULT '',
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        added_at    TEXT NOT NULL,
+        last_fetched TEXT,
+        last_count  INTEGER,
+        last_error  TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_iocs_type_value ON iocs(type, value);
+    CREATE INDEX IF NOT EXISTS idx_iocs_feed       ON iocs(feed_id);
     """)
     con.commit()
     con.close()
@@ -218,6 +264,48 @@ def migrate_db(path: str = DB_PATH):
             suppressed_hits  INTEGER NOT NULL DEFAULT 0
         )""",
         "CREATE INDEX IF NOT EXISTS idx_suppressions_rule ON suppressions(rule_id)",
+        # Feature: threat intelligence
+        """CREATE TABLE IF NOT EXISTS iocs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            type        TEXT    NOT NULL,
+            value       TEXT    NOT NULL,
+            verdict     TEXT    NOT NULL DEFAULT 'malicious',
+            score       INTEGER NOT NULL DEFAULT 75,
+            tags        TEXT    NOT NULL DEFAULT '[]',
+            source      TEXT    NOT NULL,
+            description TEXT    NOT NULL DEFAULT '',
+            actor       TEXT    NOT NULL DEFAULT '',
+            added_at    TEXT    NOT NULL,
+            expires_at  TEXT,
+            feed_id     INTEGER,
+            UNIQUE(type, value)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_iocs_type_value ON iocs(type, value)",
+        """CREATE TABLE IF NOT EXISTS ip_reputation_cache (
+            ip          TEXT PRIMARY KEY,
+            verdict     TEXT NOT NULL,
+            score       INTEGER NOT NULL DEFAULT 0,
+            tags        TEXT NOT NULL DEFAULT '[]',
+            source      TEXT NOT NULL,
+            checked_at  TEXT NOT NULL,
+            expires_at  TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS ti_feeds (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            url         TEXT NOT NULL UNIQUE,
+            feed_type   TEXT NOT NULL DEFAULT 'ip',
+            format      TEXT NOT NULL DEFAULT 'plain',
+            tags        TEXT NOT NULL DEFAULT '[]',
+            verdict     TEXT NOT NULL DEFAULT 'malicious',
+            score       INTEGER NOT NULL DEFAULT 75,
+            description TEXT NOT NULL DEFAULT '',
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            added_at    TEXT NOT NULL,
+            last_fetched TEXT,
+            last_count  INTEGER,
+            last_error  TEXT
+        )""",
     ]
     for sql in migrations:
         try:

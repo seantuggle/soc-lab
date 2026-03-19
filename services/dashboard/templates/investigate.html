@@ -155,7 +155,29 @@
   .suppress-grid select { font-size:11px; }
   .suppress-full { grid-column:1/-1; }
 
-  .fade-msg { font-size:11px; color:var(--accent); display:none; margin-top:4px; }
+  /* ── TI verdict styles ── */
+  .ti-panel-body { padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .ti-verdict {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 12px; border-radius:4px; font-family:var(--mono);
+  }
+  .ti-verdict.malicious  { background:rgba(255,68,85,.12);  border:1px solid rgba(255,68,85,.35); color:var(--red); }
+  .ti-verdict.suspicious { background:rgba(255,136,0,.1);   border:1px solid rgba(255,136,0,.3);  color:var(--orange); }
+  .ti-verdict.clean      { background:rgba(0,212,170,.08);  border:1px solid rgba(0,212,170,.25); color:var(--accent); }
+  .ti-verdict.unknown    { background:rgba(74,85,104,.15);  border:1px solid rgba(74,85,104,.3);  color:var(--muted); }
+  .ti-verdict-icon { font-size:16px; }
+  .ti-verdict-label { font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+  .ti-score { font-size:11px; opacity:.8; }
+  .ti-tag {
+    display:inline-block; padding:2px 7px; margin:2px; border-radius:2px;
+    font-family:var(--mono); font-size:10px;
+    background:rgba(255,68,85,.08); border:1px solid rgba(255,68,85,.2); color:var(--red);
+  }
+  .ti-tag.clean { background:rgba(0,212,170,.08); border-color:rgba(0,212,170,.2); color:var(--accent); }
+  .ti-source-badge {
+    font-family:var(--mono); font-size:9px; padding:2px 6px; border-radius:2px;
+    background:var(--bg3); border:1px solid var(--border); color:var(--text2);
+  }
 
   /* ── ATT&CK styles ── */
   .attack-badge {
@@ -429,6 +451,86 @@
             <div style="font-family:var(--mono); font-size:10px; color:var(--text2); white-space:pre-line; line-height:1.7;">{{ rule_meta.response | trim }}</div>
           </div>
           {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Threat Intelligence -->
+      {% if ti_data %}
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Threat Intelligence</span>
+          <a href="/threat-intel" style="font-size:10px; color:var(--accent2); text-decoration:none;">Manage →</a>
+        </div>
+        <div class="ti-panel-body">
+
+          {% if ti_data.get('ip_rep') %}
+          {% set rep = ti_data.ip_rep %}
+          <div>
+            <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:6px;">
+              IP Reputation
+              {% if event and event.fields is mapping %}· {{ event.fields.get('src_ip','') }}{% endif %}
+            </div>
+            <div class="ti-verdict {{ rep.verdict }}">
+              <span class="ti-verdict-icon">
+                {% if rep.verdict == 'malicious' %}🔴
+                {% elif rep.verdict == 'suspicious' %}🟠
+                {% elif rep.verdict == 'clean' %}🟢
+                {% else %}⚪{% endif %}
+              </span>
+              <span class="ti-verdict-label">{{ rep.verdict }}</span>
+              <span class="ti-score">{{ rep.score }}/100</span>
+            </div>
+            {% if rep.get('source') and rep.source != 'none' %}
+            <div style="margin-top:6px; display:flex; align-items:center; gap:6px;">
+              <span class="ti-source-badge">{{ rep.source }}</span>
+              {% if rep.get('from_ioc') %}<span class="ti-source-badge" style="color:var(--red);">local IOC match</span>{% endif %}
+              {% if rep.get('from_cache') %}<span class="ti-source-badge">cached</span>{% endif %}
+            </div>
+            {% endif %}
+            {% if rep.get('actor') %}
+            <div style="margin-top:6px; font-size:11px; color:var(--orange);">
+              ⚑ Threat Actor: <strong>{{ rep.actor }}</strong>
+            </div>
+            {% endif %}
+            {% if rep.get('description') %}
+            <div style="margin-top:6px; font-size:11px; color:var(--text2); line-height:1.5;">{{ rep.description }}</div>
+            {% endif %}
+            {% if rep.get('tags') %}
+            <div style="margin-top:6px;">
+              {% for tag in rep.tags %}
+              <span class="ti-tag">{{ tag }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          {% if ti_data.get('domain_rep') %}
+          {% set drep = ti_data.domain_rep %}
+          <div style="{% if ti_data.get('ip_rep') %}border-top:1px solid var(--border); padding-top:10px;{% endif %}">
+            <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:6px;">Domain Reputation</div>
+            <div class="ti-verdict {{ drep.verdict }}">
+              <span class="ti-verdict-icon">
+                {% if drep.verdict == 'malicious' %}🔴
+                {% elif drep.verdict == 'suspicious' %}🟠
+                {% elif drep.verdict == 'clean' %}🟢
+                {% else %}⚪{% endif %}
+              </span>
+              <span class="ti-verdict-label">{{ drep.verdict }}</span>
+              <span class="ti-score">{{ drep.score }}/100</span>
+            </div>
+            {% if drep.get('tags') %}
+            <div style="margin-top:6px;">
+              {% for tag in drep.tags %}<span class="ti-tag">{{ tag }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if drep.get('description') %}
+            <div style="margin-top:6px; font-size:11px; color:var(--text2);">{{ drep.description }}</div>
+            {% endif %}
+          </div>
+          {% endif %}
+
         </div>
       </div>
       {% endif %}
