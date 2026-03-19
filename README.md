@@ -1,10 +1,12 @@
 # 🔍 SOC Lab
 
-A **local, containerized Security Operations Center (SOC) learning environment** built in Python.  
-This project simulates how logs are ingested, normalized, detected, mapped to MITRE ATT&CK, and triaged by analysts — without relying on commercial SIEM platforms.
+A **local, containerized Security Operations Center (SOC) learning environment** built in Python.
+This project simulates both **defensive SOC workflows** and **controlled adversary activity** to demonstrate how logs are ingested, normalized, detected, mapped to MITRE ATT&CK, and triaged by analysts — without relying on commercial SIEM platforms.
 
 ```
 Log Sources → Ingest → Normalize → Detect → Alert → Triage
+                ↑
+           Attacker UI
 ```
 
 Built to teach **how SOC systems actually work under the hood**, not just how to click dashboards.
@@ -13,14 +15,15 @@ Built to teach **how SOC systems actually work under the hood**, not just how to
 
 ## 🎯 Why This Project Exists
 
-Most SOC labs focus on configuring tools.  
+Most SOC labs focus on configuring tools.
 This project focuses on **understanding the pipeline**.
 
 The goal of this lab is to demonstrate:
 - How raw log data becomes actionable alerts
-- How rule‑based detections are designed and tuned
+- How rule‑based detections are designed, validated, and tuned
 - How alerts map to **MITRE ATT&CK** techniques
 - How analysts triage, suppress, snooze, and export alerts during investigations
+- How controlled adversary activity is used to test detections
 
 Everything runs locally and is intentionally transparent so each stage of the SOC workflow can be inspected, modified, and extended.
 
@@ -32,10 +35,11 @@ Everything runs locally and is intentionally transparent so each stage of the SO
 - Event normalization into a consistent schema
 - YAML‑based detection rules (hot‑reloadable)
 - MITRE ATT&CK mapping at the detection level
-- Alert deduplication and suppression logic
-- Dark‑themed triage dashboard
+- Alert deduplication, suppression, and snoozing
+- Dark‑themed analyst triage dashboard
 - CSV and JSON alert export for reporting and investigations
-- Attack simulator that generates realistic SOC noise + attack traffic
+- **Web‑based Attacker UI for adversary simulation**
+- Scenario‑driven attack generation with realistic background noise
 - Unit tests for normalization and detection logic
 - Fully containerized with Docker Compose
 
@@ -45,11 +49,12 @@ Everything runs locally and is intentionally transparent so each stage of the SO
 
 This lab was designed to showcase skills relevant to SOC Analyst, Detection Engineer, and Security Engineer roles:
 
-- SOC architecture and data flow
+- SOC architecture and end‑to‑end data flow
 - Detection engineering fundamentals
 - MITRE ATT&CK usage in real alerting workflows
 - Log normalization and schema design
 - Alert lifecycle concepts (triage, suppression, export)
+- Understanding attacker behavior through controlled adversary simulation
 - Python backend development with FastAPI
 - Dockerized local development environments
 - Writing maintainable, testable security tooling
@@ -71,16 +76,47 @@ cd soc-lab
 docker compose up --build
 ```
 
-### Open the dashboard
-- http://localhost:8080
+### Open the interfaces
+- **SOC Dashboard:** http://localhost:8080
+- **Attacker UI:** http://localhost:8080/attacker
 
-### Generate attack traffic
-In a new terminal:
+### Generate attack traffic (CLI alternative)
 ```bash
 docker compose run --rm simulator python generate_events.py --scenario brute_force
 ```
 
-The simulator continuously generates a mix of benign and malicious events to mimic real SOC alert noise.
+The environment continuously generates a mix of benign and malicious activity to mimic real SOC alert noise.
+
+---
+
+## 🧨 Attacker UI (Adversary Simulation)
+
+The Attacker UI provides a controlled interface for simulating adversary behavior
+against the SOC pipeline.
+
+Rather than relying on static log replays, the UI allows users to intentionally
+generate attack scenarios that produce realistic telemetry, enabling:
+
+- Detection validation and tuning
+- MITRE ATT&CK coverage testing
+- Analyst training and triage practice
+- Signal‑to‑noise evaluation
+
+The Attacker UI is **not a red‑team tool** and does not perform real exploitation.
+It is an **adversary emulation layer** designed to safely generate events that mimic
+common attacker techniques.
+
+### Supported Scenarios
+- Brute force authentication attempts
+- Credential misuse and suspicious login behavior
+- Suspicious process execution
+- Unauthorized account creation
+- DNS tunneling patterns
+- Impossible travel scenarios
+- Web scanning activity
+
+Each scenario maps directly to one or more MITRE ATT&CK techniques and flows through
+the same ingestion, normalization, detection, and alerting pipeline as real events.
 
 ---
 
@@ -107,10 +143,10 @@ Then open:
 
 ---
 
-## 🧪 Attack Scenarios
+## 🧪 Attack Scenarios (CLI)
 
 | Scenario | What it Simulates |
-|--------|------------------|
+|---------|------------------|
 | brute_force | Repeated SSH failures from one IP |
 | cred_stuff | Failed logins followed by success |
 | powershell | Suspicious command execution |
@@ -152,12 +188,12 @@ soc-lab/
 
 ## 🧭 MITRE ATT&CK Integration
 
-Detections are mapped directly to **MITRE ATT&CK techniques** at the rule level.  
+Detections are mapped directly to **MITRE ATT&CK techniques** at the rule level.
 This allows alerts to carry technique context into the triage workflow, helping analysts:
 
 - Classify activity
 - Group related alerts
-- Understand coverage gaps
+- Understand detection coverage and gaps
 - Communicate findings using a shared framework
 
 MITRE mapping is treated as **analyst context**, not decorative metadata.
@@ -207,5 +243,5 @@ Hands‑on exercises and guided exploration are available in:
 
 ## 🚧 Disclaimer
 
-This project is for **educational and learning purposes only**.  
+This project is for **educational and learning purposes only**.
 It is not intended for production use.
